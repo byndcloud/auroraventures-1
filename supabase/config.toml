@@ -1,0 +1,23 @@
+# Substitua pelo project ref do NOVO projeto Supabase (após criar/restaurar o backup)
+# e rode: supabase link --project-ref <ref>
+project_id = "SEU_PROJECT_REF"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Edge Functions com auth CUSTOMIZADA — desligamos a verificação JWT do
+# gateway do Supabase para que a função possa validar credenciais próprias
+# (service token, HMAC, RPC com token UUID etc.). Sem isso, qualquer
+# Authorization que não seja JWT bate em "invalid JWT" antes do código rodar.
+# ──────────────────────────────────────────────────────────────────────────
+
+# Webhook do Volund OS — valida HMAC nos query params; sem Authorization
+[functions.volund-callback]
+verify_jwt = false
+
+# Webhook do Volund OS para avaliações — mesmo padrão (HMAC)
+[functions.volund-evaluation-callback]
+verify_jwt = false
+
+# MCP server — auth dupla (MCP_AGENT_API_KEY para agentes, JWT para humanos);
+# a validação acontece no middleware, não no gateway
+[functions.initiative-mcp]
+verify_jwt = false
