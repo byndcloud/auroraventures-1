@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { AuroraLogo } from "@/components/AuroraLogo";
 import { LogOut, Lightbulb, FileText, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
@@ -10,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { CallsCarousel, type Call } from "@/components/dashboard/CallsCarousel";
 import { CallDetailSheet } from "@/components/dashboard/CallDetailSheet";
 import { useCallsForDashboard } from "@/hooks/useCallsForDashboard";
-import { useEffect } from "react";
+import { useMySubmissions } from "@/features/submissions/hooks";
 
 const statusIcons: Record<string, typeof Clock> = {
   "Em Avaliação": Clock,
@@ -20,7 +19,6 @@ const statusIcons: Record<string, typeof Clock> = {
 
 export default function DashboardColaborador() {
   const { profile, user, signOut } = useAuth();
-  const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
 
@@ -30,18 +28,7 @@ export default function DashboardColaborador() {
     user?.id
   );
 
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const { data } = await supabase
-        .from("submissions")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      setSubmissions(data || []);
-    };
-    load();
-  }, [user]);
+  const { data: submissions = [] } = useMySubmissions(user?.id);
 
   const cards = [
   {

@@ -20,79 +20,37 @@ import { KpiCards } from "@/components/admin/KpiCards";
 import { CallsManager } from "@/components/admin/CallsManager";
 import { WorkspaceBoard } from "@/components/admin/workspace/WorkspaceBoard";
 import { KanbanSubmission, KANBAN_PHASES, OriginFilter } from "@/components/admin/kanban";
-import { SubmissionOrigin } from "@/components/admin/common";
+import { useSubmissionsWithScores } from "@/features/submissions/hooks";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Admin = () => {
   const { user, signOut } = useAuth();
-  const [submissions, setSubmissions] = useState<KanbanSubmission[]>([]);
   const [filter, setFilter] = useState<OriginFilter>("todos");
   const [selectedSub, setSelectedSub] = useState<KanbanSubmission | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
+  const queryClient = useQueryClient();
+  const submissionsQueryKey = ["submissions-with-scores", true, 500];
+  const { data: fetched, isLoading, isFetching, refetch } = useSubmissionsWithScores({
+    includeBriefing: true,
+  });
+  const submissions = useMemo(() => fetched ?? [], [fetched]);
+  const loading = isLoading || isFetching;
+
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: subs, error: subsErr } = await supabase
-        .from("submissions")
-        .select("id, project_name, type, status, created_at, user_id, due_date, briefing, data")
-        .order("created_at", { ascending: false })
-        .limit(500);
+    await refetch();
+  }, [refetch]);
 
-      if (subsErr) throw subsErr;
-
-      // Avaliação mais recente (completed) por submission.
-      // Order desc + Map.set ignorando duplicatas garante "latest wins".
-      const { data: scoresData } = await supabase
-        .from("evaluations")
-        .select("submission_id, scores, final_score, has_veto, verdict, created_at")
-        .eq("processing_status", "completed")
-        .order("created_at", { ascending: false });
-
-      const scoresMap = new Map<string, any>();
-      (scoresData || []).forEach((s: any) => {
-        if (!scoresMap.has(s.submission_id)) {
-          scoresMap.set(s.submission_id, {
-            scores: s.scores,
-            final_score: s.final_score,
-            has_veto: s.has_veto,
-            verdict: s.verdict,
-          });
-        }
-      });
-
-      const mapped: KanbanSubmission[] = (subs || []).map((s: any) => ({
-        id: s.id,
-        project_name: s.project_name,
-        type: s.type as SubmissionOrigin,
-        status: s.status,
-        data: (typeof s.data === 'object' && s.data !== null ? s.data : {}) as Record<string, any>,
-        created_at: s.created_at,
-        user_id: s.user_id,
-        due_date: s.due_date ?? null,
-        scores: scoresMap.get(s.id) || null,
-      }));
-
-      setSubmissions(mapped);
-
-      if (selectedSub) {
-        const updated = mapped.find((m) => m.id === selectedSub.id);
-        if (updated) setSelectedSub(updated);
-      }
-    } catch (err) {
-      console.error("Error fetching data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedSub?.id]);
-
+  // Mantém `selectedSub` sincronizado com os dados frescos.
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!selectedSub) return;
+    const updated = submissions.find((m) => m.id === selectedSub.id);
+    if (updated && updated !== selectedSub) setSelectedSub(updated);
+  }, [submissions, selectedSub]);
 
   const filtered = useMemo(
     () => filter === "todos" ? submissions : submissions.filter((s) => s.type === filter),
@@ -140,9 +98,9 @@ const Admin = () => {
     const sub = submissions.find((s) => s.id === draggedId);
     if (!sub || sub.status === targetColumnKey) return;
 
-    // Optimistic update
-    setSubmissions((prev) =>
-      prev.map((s) => s.id === draggedId ? { ...s, status: targetColumnKey } : s)
+    // Optimistic update no cache TanStack (rollback via refetch em erro).
+    queryClient.setQueryData<KanbanSubmission[]>(submissionsQueryKey, (prev) =>
+      (prev ?? []).map((s) => s.id === draggedId ? { ...s, status: targetColumnKey } : s)
     );
 
     try {
@@ -153,23 +111,27 @@ const Admin = () => {
 
       if (error) throw error;
 
-      // Audit log – fire and forget
-      supabase
-        .from("submission_history")
-        .insert({
-          submission_id: draggedId,
-          from_status: sub.status,
-          to_status: targetColumnKey,
-          moved_by: user?.id,
-        })
-        .then(({ error: histErr }) => {
-          if (histErr) console.error("Audit log error:", histErr);
-        });
+      // Audit log – fire and forget. moved_by é NOT NULL no schema, então
+      // só logamos quando temos user autenticado (o path de admin garante).
+      if (user?.id) {
+        supabase
+          .from("submission_history")
+          .insert({
+            submission_id: draggedId,
+            from_status: sub.status,
+            to_status: targetColumnKey,
+            moved_by: user.id,
+          })
+          .then(({ error: histErr }) => {
+            if (histErr) console.error("Audit log error:", histErr);
+          });
+      }
 
       const phaseLabel = KANBAN_PHASES.find((p) => p.key === targetColumnKey)?.label || targetColumnKey;
       toast.success(`Movido para ${phaseLabel}`);
-    } catch (err: any) {
-      toast.error("Erro ao mover card", { description: err.message });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error("Erro ao mover card", { description: msg });
       fetchData(); // rollback
     }
   };
