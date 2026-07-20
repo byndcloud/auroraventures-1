@@ -32,7 +32,7 @@ Escrever a entry é a **Etapa 7 obrigatória** do fluxo definido em
 
 - Data = dia do commit final aprovado
 - Slug = kebab-case curto (3–6 palavras), foco no **objeto** da mudança:
-  - ✔ `2026-07-20-migrate-zelar-skills.md`
+  - ✔ `2026-07-20-import-volund-agentic-skills.md`
   - ✔ `2026-07-25-viewer-rls-policies.md`
   - ✔ `2026-08-03-fix-transcript-signed-urls.md`
   - ✘ `2026-07-20-work.md` (vago)
