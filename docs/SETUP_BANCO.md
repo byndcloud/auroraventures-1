@@ -44,23 +44,41 @@ deliberadamente removido (data-fixes, versões inseguras substituídas, etc.).
 
 ## 3. Popular dados iniciais (opcional)
 
-O schema nasce **vazio** — sem chamadas de exemplo, sem roles pré-atribuídas.
+O schema nasce **vazio** — sem chamadas de exemplo. As regras de atribuição
+de role vivem na tabela `public.role_assignment_rules` (migration
+`20260720000200`), com um seed inicial embutido:
+
+- `admin`: `rodrigo.miranda@beyondcompany.com.br`,
+  `filipe.moreira@beyondcompany.com.br`, `liliane.oliveira@beyondcompany.com.br`
+- `colaborador`: qualquer `@beyondcompany.com.br`, `@extreme.digital`,
+  `@volund.com.br`
+- `founder`: qualquer outro domínio (default)
+
 Fluxos automáticos:
 
-- **Signup** → `handle_new_user()` cria linha em `profiles` e atribui a role
-  automaticamente pelo domínio do email:
-  - `admin`: emails literais `rodrigo.miranda@beyondcompany.com.br` e
-    `filipe.moreira@beyondcompany.com.br`
-  - `colaborador`: qualquer `@beyondcompany.com.br`, `@extreme.digital`,
-    `@volund.com.br`
-  - `founder`: qualquer outro domínio
+- **Signup** → `handle_new_user()` chama `resolve_role_for_email()` que
+  consulta `role_assignment_rules` (email exato → domínio → default) e
+  cria linha em `profiles` + `user_roles` na mesma transação.
 
-- **Ajuste manual de role**: via Dashboard Supabase → Table Editor →
+- **Adicionar novo admin / viewer externo** sem migration: edite a lista em
+  `scripts/seed-role-rules.ts` e rode
+
+  ```bash
+  SUPABASE_URL=https://[REF].supabase.co \
+  SUPABASE_SERVICE_ROLE_KEY=<service_role> \
+  npm run seed:roles
+  ```
+
+  O script faz UPSERT idempotente da tabela **e** reconcilia usuários já
+  cadastrados (promove para admin/viewer quando a regra diverge; nunca
+  rebaixa `viewer` manual).
+
+- **Ajuste pontual sem seed**: via Dashboard Supabase → Table Editor →
   `public.user_roles` (o trigger `sync_user_role_to_profile` propaga
   automaticamente para `profiles.role`).
 
-Um seed script (chamadas de exemplo, atribuição de `viewer` para stakeholders
-específicos) está registrado como follow-up em [FOLLOWUPS.md](./FOLLOWUPS.md).
+Um seed de chamadas de exemplo está registrado como follow-up em
+[FOLLOWUPS.md](./FOLLOWUPS.md).
 
 ## 4. Configurar Auth
 
