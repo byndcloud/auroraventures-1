@@ -1,6 +1,6 @@
 # Substitua pelo project ref do NOVO projeto Supabase (após criar/restaurar o backup)
 # e rode: supabase link --project-ref <ref>
-project_id = "SEU_PROJECT_REF"
+project_id = "hywsuoyhlsqrplmzfctk"
 
 # ──────────────────────────────────────────────────────────────────────────
 # Edge Functions com auth CUSTOMIZADA — desligamos a verificação JWT do
