@@ -1,0 +1,68 @@
+---
+description: Stack, convenções e padrões de implementação do Aurora — leia CLAUDE.md antes de escrever código.
+alwaysApply: true
+---
+
+# Stack & Convenções
+
+Contexto completo em [`CLAUDE.md`](mdc:CLAUDE.md). Este arquivo é um pointer com o
+essencial que **nunca** pode ser esquecido.
+
+## Stack
+
+- **Frontend:** Vite + React 18 + TypeScript strict + React Router v6 + TailwindCSS 3 +
+  shadcn/ui (Radix) + TanStack Query v5 + React Hook Form + Zod + @dnd-kit +
+  framer-motion + Recharts + sonner + lucide-react
+- **Backend:** Supabase (Postgres com RLS + Auth JWT + Storage + Edge Functions Deno +
+  Realtime)
+- **Integrações:** Volund OS (agentes de IA via HTTP+HMAC), Resend (e-mail), Google OAuth
+  nativo Supabase
+- **Testes:** Vitest (unit) + Playwright (e2e)
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`)
+
+## Convenções obrigatórias
+
+- Gerenciador de pacotes: **`npm`** — nunca `pnpm`, `yarn`, `bun`
+- Um só lockfile (`package-lock.json`); porta dev única (**5173**)
+- TypeScript strict; `any`/`as any` é dívida — não ampliar
+- Migrações SQL em `supabase/migrations/` (nunca dashboard, nunca
+  `supabase/migrations-legacy/`)
+- **RLS obrigatório** em toda tabela com dado de usuário
+- Roles em `user_roles`, nunca em `profiles`; **sem fallback silencioso para `founder`**
+- Todo acesso a dados via hooks TanStack Query (não `fetch` manual em componentes)
+- `select` com colunas explícitas + `.limit()` em listas que crescem
+- Realtime em vez de polling
+- Um só sistema de toast (`sonner`), um só set de ícones (`lucide-react`)
+- Conventional Commits
+- Copy em PT-BR; código e identificadores em inglês
+
+## Padrões de implementação
+
+- **Cliente Supabase:** único em [`src/integrations/supabase/client.ts`](mdc:src/integrations/supabase/client.ts),
+  importado como `import { supabase } from "@/integrations/supabase/client"`
+- **Redirect por role:** [`src/lib/roles.ts`](mdc:src/lib/roles.ts) — `getDashboardPath()`
+- **Rotas protegidas:** [`src/components/ProtectedRoute.tsx`](mdc:src/components/ProtectedRoute.tsx)
+  (apenas UX; RLS decide)
+- **Labels de campos de submissão:** [`src/lib/submission-field-labels.ts`](mdc:src/lib/submission-field-labels.ts)
+  — mapa único; nunca criar paralelo
+- **Fases do Kanban (case-sensitive):** `Discovery & Pitch`, `Submissões`, `Screening`,
+  `Proposta`, `Ongoing`, `Handover`, `Despriorizado`
+- **Enums em PT no banco:** `ativa`, `publica`, `mercado`, `interna`, `editais`,
+  `rascunho`, `encerrada`, etc.
+- **Fórmula do scorecard:** `(Bloco 1 × 0.60) + (Bloco 2 × 0.40)` — função server-side
+  única, nunca duplicar no front
+
+## Débitos herdados do Lovable — NÃO reproduzir
+
+Ver [`docs/BLUEPRINT_RECRIACAO.md`](mdc:docs/BLUEPRINT_RECRIACAO.md) §8 para a lista
+completa. Os principais:
+
+- `.env` commitado no git (agora ignorado — não desativar)
+- Edge Function `sign-transcripts` sem auth + service_role — não recriar como estava
+- CORS `*` em Edge Functions
+- 3 lockfiles simultâneos, 2 sistemas de toast, 2 sets de ícones, 2 mapas de labels
+- Fallback silencioso para role `founder`
+- Fetch manual duplicado entre `Admin.tsx` e `DashboardViewer.tsx`
+- `setInterval(3000)` no copilot e `setInterval(4000)` em avaliações — usar Realtime
+- Componentes de 700–1400 linhas (`CheckpointMeetingsSection`, `IniciativaDetalhe`) —
+  quebrar ao tocar
