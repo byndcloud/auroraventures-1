@@ -14,12 +14,18 @@ export function HeroSection() {
       navigate("/login");
       return;
     }
+    const role = profile.role;
+    // Sem role em user_roles = precisa de atendimento admin.
+    if (role === null) {
+      navigate("/acesso-negado");
+      return;
+    }
     // Founder vai direto para o fluxo de submissão; demais roles, ao painel.
-    if (profile.role === "founder") {
+    if (role === "founder") {
       navigate("/submissaomercado");
       return;
     }
-    navigate(getDashboardPath(profile.role));
+    navigate(getDashboardPath(role));
   };
 
   return (

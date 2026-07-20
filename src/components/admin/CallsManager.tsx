@@ -347,15 +347,18 @@ function ResponsesDialog({
     if (!responses?.length || !fields?.length) return;
 
     const headers = ["Email", "Data", ...fields.map((f) => f.label)];
-    const rows = responses.map((r) => [
-      r.respondent_email || "",
-      new Date(r.created_at).toLocaleDateString("pt-BR"),
-      ...fields.map((f) => {
-        const val = r.response_data?.[f.id] ?? r.response_data?.[f.label];
-        if (Array.isArray(val)) return val.join("; ");
-        return String(val ?? "");
-      }),
-    ]);
+    const rows = responses.map((r) => {
+      const data = (r.response_data ?? {}) as Record<string, unknown>;
+      return [
+        r.respondent_email || "",
+        new Date(r.created_at).toLocaleDateString("pt-BR"),
+        ...fields.map((f) => {
+          const val = (f.id ? data[f.id] : undefined) ?? data[f.label];
+          if (Array.isArray(val)) return val.join("; ");
+          return String(val ?? "");
+        }),
+      ];
+    });
 
     const csv = [headers, ...rows]
       .map((row) =>
@@ -419,7 +422,8 @@ function ResponsesDialog({
                   </AccordionTrigger>
                   <AccordionContent className="pb-4 space-y-2">
                     {fields?.map((f) => {
-                      const val = resp.response_data?.[f.id] ?? resp.response_data?.[f.label];
+                      const data = (resp.response_data ?? {}) as Record<string, unknown>;
+                      const val = (f.id ? data[f.id] : undefined) ?? data[f.label];
                       return (
                         <div key={f.label} className="text-sm">
                           <span className="font-medium text-muted-foreground">

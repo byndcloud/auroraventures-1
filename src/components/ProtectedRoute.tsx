@@ -24,7 +24,13 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  // Sessão autenticada mas sem role (trigger handle_new_user falhou ou
+  // user_roles vazio). Não há default silencioso — bloqueia o acesso.
+  if (session && profile && profile.role === null) {
+    return <Navigate to="/acesso-negado" replace />;
+  }
+
+  if (allowedRoles && profile && profile.role !== null && !allowedRoles.includes(profile.role)) {
     return <Navigate to="/acesso-negado" replace />;
   }
 

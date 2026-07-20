@@ -30,6 +30,10 @@ export default function Login() {
 
   useEffect(() => {
     if (session && user && profile) {
+      if (profile.role === null) {
+        navigate("/acesso-negado", { replace: true });
+        return;
+      }
       navigate(getDashboardPath(profile.role), { replace: true });
     }
   }, [session, user, profile, navigate]);
