@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -91,6 +116,13 @@ export type Database = {
             referencedRelation: "calls"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "call_responses_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       calls: {
@@ -133,7 +165,15 @@ export type Database = {
           vertical?: string | null
           visibility?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "calls_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       chat_messages: {
         Row: {
@@ -206,11 +246,18 @@ export type Database = {
             referencedRelation: "submissions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "chat_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
         ]
       }
       evaluations: {
         Row: {
-          author_id: string
+          author_id: string | null
           created_at: string
           descriptions: Json | null
           error_message: string | null
@@ -229,7 +276,7 @@ export type Database = {
           volund_run_id: string | null
         }
         Insert: {
-          author_id: string
+          author_id?: string | null
           created_at?: string
           descriptions?: Json | null
           error_message?: string | null
@@ -248,7 +295,7 @@ export type Database = {
           volund_run_id?: string | null
         }
         Update: {
-          author_id?: string
+          author_id?: string | null
           created_at?: string
           descriptions?: Json | null
           error_message?: string | null
@@ -268,6 +315,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "evaluations_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "evaluations_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: false
@@ -279,7 +333,7 @@ export type Database = {
       meetings: {
         Row: {
           category: string
-          created_at: string | null
+          created_at: string
           created_by: string | null
           error_message: string | null
           id: string
@@ -293,14 +347,15 @@ export type Database = {
           submission_id: string
           title: string
           transcript: string | null
+          transcript_path: string | null
           transcript_url: string | null
-          updated_at: string | null
+          updated_at: string
           volund_run_id: string | null
           week_id: string | null
         }
         Insert: {
           category?: string
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           error_message?: string | null
           id?: string
@@ -314,14 +369,15 @@ export type Database = {
           submission_id: string
           title: string
           transcript?: string | null
+          transcript_path?: string | null
           transcript_url?: string | null
-          updated_at?: string | null
+          updated_at?: string
           volund_run_id?: string | null
           week_id?: string | null
         }
         Update: {
           category?: string
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           error_message?: string | null
           id?: string
@@ -335,12 +391,20 @@ export type Database = {
           submission_id?: string
           title?: string
           transcript?: string | null
+          transcript_path?: string | null
           transcript_url?: string | null
-          updated_at?: string | null
+          updated_at?: string
           volund_run_id?: string | null
           week_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "meetings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "meetings_submission_id_fkey"
             columns: ["submission_id"]
@@ -387,6 +451,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "ongoing_share_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "ongoing_share_links_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: true
@@ -425,6 +496,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "ongoing_weeks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "ongoing_weeks_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: false
@@ -458,7 +536,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       readouts: {
         Row: {
@@ -488,7 +574,22 @@ export type Database = {
           title?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "readouts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "readouts_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       submission_history: {
         Row: {
@@ -520,50 +621,6 @@ export type Database = {
             foreignKeyName: "submission_history_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: false
-            referencedRelation: "submissions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      submission_scores: {
-        Row: {
-          created_at: string
-          evaluated_by: string
-          final_score: number
-          has_veto: boolean
-          id: string
-          scores: Json
-          submission_id: string
-          updated_at: string
-          verdict: string
-        }
-        Insert: {
-          created_at?: string
-          evaluated_by: string
-          final_score?: number
-          has_veto?: boolean
-          id?: string
-          scores?: Json
-          submission_id: string
-          updated_at?: string
-          verdict?: string
-        }
-        Update: {
-          created_at?: string
-          evaluated_by?: string
-          final_score?: number
-          has_veto?: boolean
-          id?: string
-          scores?: Json
-          submission_id?: string
-          updated_at?: string
-          verdict?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "submission_scores_submission_id_fkey"
-            columns: ["submission_id"]
-            isOneToOne: true
             referencedRelation: "submissions"
             referencedColumns: ["id"]
           },
@@ -606,7 +663,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "submissions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -624,7 +689,15 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       vesting_indicators: {
         Row: {
@@ -689,6 +762,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "vesting_indicators_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "vesting_indicators_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: false
@@ -739,6 +819,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "vesting_measurements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "vesting_measurements_indicator_id_fkey"
             columns: ["indicator_id"]
             isOneToOne: false
@@ -787,6 +874,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "vesting_week_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
+          },
+          {
             foreignKeyName: "vesting_week_notes_submission_id_fkey"
             columns: ["submission_id"]
             isOneToOne: false
@@ -800,7 +894,7 @@ export type Database = {
           created_at: string
           file_name: string
           file_path: string
-          file_size: number | null
+          file_size: number
           id: string
           mime_type: string | null
           submission_id: string
@@ -811,7 +905,7 @@ export type Database = {
           created_at?: string
           file_name: string
           file_path: string
-          file_size?: number | null
+          file_size: number
           id?: string
           mime_type?: string | null
           submission_id: string
@@ -822,7 +916,7 @@ export type Database = {
           created_at?: string
           file_name?: string
           file_path?: string
-          file_size?: number | null
+          file_size?: number
           id?: string
           mime_type?: string | null
           submission_id?: string
@@ -836,6 +930,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "submissions"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "week_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "role_audit_divergences"
+            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "week_documents_week_id_fkey"
@@ -914,7 +1015,18 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      role_audit_divergences: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          role_atual: Database["public"]["Enums"]["app_role"] | null
+          role_esperado_pela_regra:
+            | Database["public"]["Enums"]["app_role"]
+            | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_public_ongoing: { Args: { p_token: string }; Returns: Json }
@@ -1053,6 +1165,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["founder", "colaborador", "admin", "viewer"],
