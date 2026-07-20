@@ -10,11 +10,19 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { corsHeaders } from "../_shared/cors.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SITE_URL = Deno.env.get("SITE_URL") ?? "https://aurora.volund.com.br";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+function jsonResponse(body: unknown, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function escapeHtml(s: string): string {
   return String(s)
@@ -38,56 +46,42 @@ const DASHBOARD_PATHS: Record<string, string> = {
 };
 
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   try {
     // Require authenticated caller — prevents anonymous email relay/phishing.
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: authData, error: authErr } = await userClient.auth.getUser();
     if (authErr || !authData?.user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
     const { userEmail, userName, projectName, submissionType } = await req.json();
 
     if (!userEmail || !projectName || !submissionType) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Missing required fields" }, 400);
     }
 
     // Caller may only send the confirmation email to themselves.
     if (String(userEmail).toLowerCase() !== String(authData.user.email ?? "").toLowerCase()) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Forbidden" }, 403);
     }
 
     if (!RESEND_API_KEY) {
       console.error("RESEND_API_KEY not configured");
-      return new Response(JSON.stringify({ error: "Email service not configured" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Email service not configured" }, 500);
     }
 
     const rawTypeLabel = TYPE_LABELS[submissionType] ?? submissionType;
@@ -170,21 +164,12 @@ serve(async (req) => {
     if (!resendRes.ok) {
       const errText = await resendRes.text();
       console.error("Resend error:", errText);
-      return new Response(JSON.stringify({ error: "Failed to send email" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Failed to send email" }, 500);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: true }, 200);
   } catch (err) {
     console.error("Unexpected error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
