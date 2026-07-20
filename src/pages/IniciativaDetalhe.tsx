@@ -1,13 +1,21 @@
+// TODO(monolith-split): quebrar este arquivo (≈880L) conforme §6.5 do BLUEPRINT
+// em um componente por aba:
+//   - InitiativeDataTab       (dados da iniciativa + edição)
+//   - InitiativeScorecardTab  (scorecard render + comparação)
+//   - InitiativeMeetingsTab   (reuniões + checkpoint)
+//   - InitiativeOngoingTab    (vesting + progresso)
+//   - InitiativeHistoryTab    (audit log)
+//   - InitiativeCopilotPanel  (chat contextual)
+// Rastreamento: docs/FOLLOWUPS.md · "Monolith split — IniciativaDetalhe".
 import { useParams, Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { type SubmissionOrigin } from "@/components/admin/common";
 import { BLOCO1_FIELDS, BLOCO2_FIELDS, SCORECARD_META } from "@/components/admin/scorecard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
   Accordion,
@@ -18,7 +26,6 @@ import {
 import { Download, Calendar, User, ArrowRight, ArrowLeft, Loader2, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { toast } from "sonner";
 import { AuroraLogo } from "@/components/AuroraLogo";
 import { SECTIONS_BY_ORIGIN, buildLabelMap, type FieldSection } from "@/lib/submission-field-labels";
 import { ReadoutTab } from "@/components/admin/ReadoutTab";
@@ -116,7 +123,6 @@ function resolveSections(status: string | null | undefined): readonly Section[] 
 export default function IniciativaDetalhe() {
   const { id } = useParams<{ id: string }>();
   const { profile } = useAuth();
-  const queryClient = useQueryClient();
   const canEdit = profile?.role === "admin" || profile?.role === "colaborador";
 
   // ── Queries ────────────────────────────────────────────────
@@ -208,118 +214,17 @@ export default function IniciativaDetalhe() {
     return () => observers.forEach((o) => o?.disconnect());
   }, [submission]);
 
-  // ── Export PDF ──────────────────────────────────────────────
-  const [exporting, setExporting] = useState(false);
-
-  const handleExportPDF = async () => {
-    setExporting(true);
-    toast.info("Gerando PDF, aguarde...");
-    try {
-      const html2canvas = (await import("html2canvas-pro")).default;
-      const { jsPDF } = await import("jspdf");
-
-      // Hide nav/header elements during capture
-      const printHidden = document.querySelectorAll<HTMLElement>(".print\\:hidden");
-      printHidden.forEach((el) => (el.style.display = "none"));
-
-      const root = document.getElementById("iniciativa-root");
-      if (!root) throw new Error("Root not found");
-
-      // Get the actual dark background color from the page
-      const bgColor = "#141024"; // hsl(250 30% 8%) ≈ this hex
-
-      // Capture the full page as a single high-res canvas
-      const canvas = await html2canvas(root, {
-        backgroundColor: bgColor,
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        windowWidth: root.scrollWidth,
-      });
-
-      // Restore hidden elements immediately after capture
-      printHidden.forEach((el) => (el.style.display = ""));
-
-      const imgData = canvas.toDataURL("image/png");
-
-      // A4 dimensions in pt
-      const A4_W = 595.28;
-      const A4_H = 841.89;
-      const MARGIN = 30;
-      const HEADER_H = 36; // space for logo header
-      const FOOTER_H = 24; // space for page number footer
-      const usableW = A4_W - MARGIN * 2;
-      const contentTop = MARGIN + HEADER_H;
-      const usableH = A4_H - contentTop - MARGIN - FOOTER_H;
-
-      // Scale full image to fit page width
-      const imgScaledH = canvas.height * (usableW / canvas.width);
-      const totalPages = Math.ceil(imgScaledH / usableH);
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-      for (let page = 0; page < totalPages; page++) {
-        if (page > 0) pdf.addPage();
-
-        // ── Dark background fill for each page ──
-        pdf.setFillColor(20, 16, 36); // #141024
-        pdf.rect(0, 0, A4_W, A4_H, "F");
-
-        // ── Header: AURORA. logo ──
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(14);
-        pdf.setTextColor(240, 240, 240); // foreground white
-        pdf.text("AURORA", MARGIN, MARGIN + 16);
-        // Orange dot
-        const auroraWidth = pdf.getTextWidth("AURORA");
-        pdf.setTextColor(235, 130, 30); // primary orange
-        pdf.text(".", MARGIN + auroraWidth, MARGIN + 16);
-
-        // Thin separator line under header
-        pdf.setDrawColor(60, 50, 80); // border color
-        pdf.setLineWidth(0.5);
-        pdf.line(MARGIN, MARGIN + HEADER_H - 4, A4_W - MARGIN, MARGIN + HEADER_H - 4);
-
-        // ── Content slice ──
-        const srcY = page * usableH;
-        // We draw the full image but offset vertically so only the current slice shows
-        // Use clipping to constrain to the content area
-        pdf.saveGraphicsState();
-        // Tipos do jsPDF não expõem rect(style: null)/clip() — API de clipping
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pdfClip = pdf as any;
-        pdfClip.rect(MARGIN, contentTop, usableW, usableH, null);
-        pdfClip.clip();
-        pdf.addImage(
-          imgData,
-          "PNG",
-          MARGIN,
-          contentTop - srcY,
-          usableW,
-          imgScaledH
-        );
-        pdf.restoreGraphicsState();
-
-        // ── Footer: page number ──
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8);
-        pdf.setTextColor(120, 110, 140); // muted
-        const pageText = `Página ${page + 1} de ${totalPages}`;
-        const textW = pdf.getTextWidth(pageText);
-        pdf.text(pageText, A4_W - MARGIN - textW, A4_H - MARGIN);
-      }
-
-      const projectName = submission?.project_name || "iniciativa";
-      pdf.save(`${projectName.replace(/\s+/g, "_")}.pdf`);
-      toast.success("PDF exportado com sucesso!");
-    } catch (err) {
-      console.error("PDF export error:", err);
-      toast.error("Erro ao gerar PDF. Tente novamente.");
-      const printHidden = document.querySelectorAll<HTMLElement>(".print\\:hidden");
-      printHidden.forEach((el) => (el.style.display = ""));
-    } finally {
-      setExporting(false);
-    }
+  // ── Export PDF via window.print() ────────────────────────────
+  // Solução interim (ADR-0002): usamos `window.print()` + CSS `@media print`
+  // em vez de rasterizar via html2canvas-pro + jspdf. Motivos:
+  //   - Bundle 400+ KB menor
+  //   - Sem loop de rasterização (dark theme complex color-mix quebrava)
+  //   - Fidelidade nativa do browser (fontes, seleção de texto, hyperlinks)
+  // Migração futura para Puppeteer/Browserless via Edge Function fica em
+  // docs/FOLLOWUPS.md.
+  const handleExportPDF = () => {
+    if (typeof window === "undefined") return;
+    window.print();
   };
 
   // ── Loading / Not Found ────────────────────────────────────
@@ -375,11 +280,11 @@ export default function IniciativaDetalhe() {
             variant="outline"
             size="sm"
             onClick={handleExportPDF}
-            disabled={exporting}
             className="gap-1.5 border-border/50"
+            title="Abre o diálogo de impressão do navegador — escolha 'Salvar como PDF'"
           >
-            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            {exporting ? "Gerando..." : "Exportar PDF"}
+            <Download className="w-3.5 h-3.5" />
+            Exportar PDF
           </Button>
         </div>
       </header>
@@ -763,8 +668,8 @@ export default function IniciativaDetalhe() {
             </div>
           ) : (
             <Accordion type="single" collapsible className="space-y-3">
-              {meetings.map((raw) => {
-                const meeting = raw as unknown as MeetingRow;
+              {meetings.map((raw: unknown) => {
+                const meeting = raw as MeetingRow;
                 const status = getMeetingStatusBadge(meeting);
                 return (
                   <AccordionItem
