@@ -83,8 +83,9 @@ qualquer mudança estrutural.
   públicas explicitamente marcadas como tal
 
 ### Segurança
-- Segredos nunca commitados — `.env` está no `.gitignore` (o original vazou no git; se
-  chaves de projeto Supabase foram expostas, rotacionar)
+- Segredos nunca commitados — `.env` está no `.gitignore` (`.env.*` também;
+  exceção: `.env.example`). Este repositório nasceu limpo — nenhum `.env` foi
+  versionado, chaves Supabase nunca foram expostas em git
 - Nunca chamar Volund OS ou Resend diretamente do frontend — sempre via Edge Function
 - CORS das Edge Functions restrito ao domínio da aplicação via secret `CORS_ORIGIN` —
   nunca `Access-Control-Allow-Origin: *`

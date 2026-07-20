@@ -142,13 +142,3 @@ faltam:
 - Scorecard/veto (INSERT via UI + trigger recalcula final_score).
 - Deadline de chamadas (UI bloqueia envio + RLS backup).
 
----
-
-## 9. Rotação de chaves Supabase (se `.env` vazou no repo original)
-
-**Prioridade:** alta se aplicável.
-
-O projeto original commitou `.env` no histórico do Lovable. Se as chaves
-`anon` / `service_role` do projeto de produção foram expostas, rotacionar via
-Supabase Dashboard → Settings → API. Nesta branch **não** rotacionamos —
-depende da resposta do time sobre a exposição real.

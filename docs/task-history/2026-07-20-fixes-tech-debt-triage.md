@@ -97,7 +97,6 @@ Todos rastreados em [`FOLLOWUPS.md`](../FOLLOWUPS.md):
 - §6 Dead-code shadcn Toaster + @hugeicons + metas Lovable
 - §7 PDF server-side com Puppeteer (substituir window.print interim)
 - §8 Cobertura Playwright: submissão, kanban DnD, scorecard, deadline
-- §9 Rotação de chaves Supabase se `.env` original vazou
 
 ## ADRs geradas
 
