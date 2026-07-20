@@ -1,5 +1,22 @@
 import { SubmissionOrigin } from "./common";
 
+// ============================================================================
+// SCORECARD — metadata + PREVIEW helpers
+// ============================================================================
+// A FÓRMULA AUTORITATIVA vive no Postgres:
+//   public.compute_evaluation_verdict(scores, submission_type)
+// disparada pelo trigger `evaluations_recompute_verdict_trigger` em
+// public.evaluations (BEFORE INSERT/UPDATE OF scores).
+//
+// As funções `previewFinalScore` / `previewHasVeto` / `previewVerdict` neste
+// arquivo servem APENAS para render em tempo real do ScorecardForm enquanto
+// o admin preenche. No submit, escrevemos apenas `scores` e deixamos o
+// trigger fechar final_score/has_veto/verdict server-side.
+//
+// Mudanças de peso/veto exigem alterar BLOCO1_FIELDS/BLOCO2_FIELDS AQUI e
+// `supabase/migrations/20260720000100_compute_evaluation_verdict.sql`.
+// ============================================================================
+
 // Bloco 1 is the same for all origins
 export const BLOCO1_FIELDS = [
   { key: "diferencial", label: "Diferencial Injusto", weight: 10 },
@@ -157,7 +174,15 @@ export const SCORECARD_META: Record<string, { pergunta: string; justificativa: s
   },
 };
 
-export function calcFinalScore(scores: Record<string, number | boolean>, origin: SubmissionOrigin) {
+/**
+ * PRÉVIA — usado apenas para exibição enquanto o admin preenche o form.
+ * Valor autoritativo é gravado pelo trigger `evaluations_recompute_verdict`
+ * a partir de `scores` no INSERT/UPDATE de public.evaluations.
+ */
+export function previewFinalScore(
+  scores: Record<string, number | boolean>,
+  origin: SubmissionOrigin,
+): number {
   const b1Fields = BLOCO1_FIELDS;
   const b2Fields = BLOCO2_FIELDS[origin];
 
@@ -176,16 +201,26 @@ export function calcFinalScore(scores: Record<string, number | boolean>, origin:
   return b1Sum * 0.6 + b2Sum * 0.4;
 }
 
-export function checkVetos(scores: Record<string, number | boolean>, origin: SubmissionOrigin): boolean {
+/** PRÉVIA — ver `previewFinalScore`. */
+export function previewHasVeto(
+  scores: Record<string, number | boolean>,
+  origin: SubmissionOrigin,
+): boolean {
   const allFields = [...BLOCO1_FIELDS, ...BLOCO2_FIELDS[origin]];
   return allFields.some((f) => f.isVeto && scores[`veto_${f.key}`] === true);
 }
 
-export function getVerdict(score: number, hasVeto: boolean) {
-  if (hasVeto) return { label: "REPROVADO", color: "destructive" as const };
-  if (score > 80) return { label: "Aprovar", color: "accent" as const };
-  if (score >= 60) return { label: "Amadurecer", color: "warning" as const };
-  return { label: "Kill", color: "destructive" as const };
+export type VerdictLabel = "REPROVADO" | "Aprovar" | "Amadurecer" | "Kill";
+
+/** PRÉVIA — ver `previewFinalScore`. */
+export function previewVerdict(score: number, hasVeto: boolean): {
+  label: VerdictLabel;
+  color: "destructive" | "accent" | "warning";
+} {
+  if (hasVeto) return { label: "REPROVADO", color: "destructive" };
+  if (score > 80) return { label: "Aprovar", color: "accent" };
+  if (score >= 60) return { label: "Amadurecer", color: "warning" };
+  return { label: "Kill", color: "destructive" };
 }
 
 export function sumWeights(fields: { weight: number }[]): number {

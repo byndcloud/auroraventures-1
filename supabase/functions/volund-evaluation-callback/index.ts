@@ -2,9 +2,15 @@
 // Edge Function: volund-evaluation-callback
 // ============================================================================
 // Recebe o webhook do Volund OS quando o agente Avaliador conclui um run.
-// Valida HMAC, parseia o JSON estruturado retornado pela skill V1, recalcula
-// final_score / has_veto / verdict server-side (single source of truth) e
-// persiste em `evaluations`.
+// Valida HMAC, parseia o JSON estruturado retornado pela skill V1, normaliza
+// (nested {geral, especifico}, {nota, peso}, snake_case, 0-10 vs 0-100, vetos
+// em formatos diferentes) e persiste em `evaluations`.
+//
+// O cálculo de final_score / has_veto / verdict é feito pelo TRIGGER
+// `evaluations_recompute_verdict_trigger` (BEFORE INSERT/UPDATE em evaluations)
+// que chama `public.compute_evaluation_verdict(scores, submission_type)`.
+// A fonte única server-side vive no Postgres — esta função só entrega
+// `scores` normalizada e deixa o trigger fechar a conta.
 //
 // O Volund chama:
 //   POST {SUPABASE_URL}/functions/v1/volund-evaluation-callback?evaluation=<uuid>&token=<hmac>
@@ -15,86 +21,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { hmacSign, safeEquals } from "../_shared/hmac.ts";
-
-// ── Replica de src/components/admin/scorecard.ts ────────────────────────────
-// Mantenha em sincronia com o arquivo no front. Server é a fonte da verdade
-// para final_score / has_veto / verdict (front apenas exibe).
-
-type Origin = "mercado" | "interna" | "editais";
-
-interface Field {
-  key: string;
-  weight: number;
-  isVeto?: boolean;
-}
-
-const BLOCO1: Field[] = [
-  { key: "diferencial", weight: 10 },
-  { key: "alinhamento", weight: 10 },
-  { key: "problemaReal", weight: 10 },
-  { key: "tamSamSom", weight: 10 },
-  { key: "escalaReceita", weight: 10 },
-  { key: "escalaB2G", weight: 10 },
-  { key: "infraAprov", weight: 5 },
-  { key: "velocidadeMVP", weight: 10 },
-  { key: "vibeCoding", weight: 5 },
-  { key: "riscoRegulatorio", weight: 10, isVeto: true },
-  { key: "conhecimentoInterno", weight: 5 },
-  { key: "processoComercial", weight: 5 },
-];
-
-const BLOCO2: Record<Origin, Field[]> = {
-  mercado: [
-    { key: "perfilFounder", weight: 20, isVeto: true },
-    { key: "donoBriga", weight: 20 },
-    { key: "sinergiaCAC", weight: 20 },
-    { key: "gapEntrega", weight: 20 },
-    { key: "canaisVenda", weight: 20 },
-  ],
-  interna: [
-    { key: "disponibilidadeReal", weight: 30, isVeto: true },
-    { key: "perfilEmpreendedor", weight: 25, isVeto: true },
-    { key: "donoBriga", weight: 25 },
-    { key: "canaisNetwork", weight: 20 },
-  ],
-  editais: [
-    { key: "pi", weight: 20, isVeto: true },
-    { key: "cobertura", weight: 15 },
-    { key: "matchRecursos", weight: 15 },
-    { key: "atestados", weight: 15, isVeto: true },
-    { key: "ecossistema", weight: 10 },
-    { key: "fluxoCaixa", weight: 15 },
-    { key: "roiBurocratico", weight: 10, isVeto: true },
-  ],
-};
-
-function calcFinalScore(
-  scores: Record<string, number | boolean>,
-  origin: Origin,
-): number {
-  const sum = (fields: Field[]) =>
-    fields.reduce((acc, f) => {
-      const v = scores[f.key];
-      return typeof v === "number" ? acc + v * (f.weight / 100) : acc;
-    }, 0);
-  return sum(BLOCO1) * 0.6 + sum(BLOCO2[origin]) * 0.4;
-}
-
-function checkVetos(
-  scores: Record<string, number | boolean>,
-  origin: Origin,
-): boolean {
-  return [...BLOCO1, ...BLOCO2[origin]].some(
-    (f) => f.isVeto && scores[`veto_${f.key}`] === true,
-  );
-}
-
-function getVerdict(score: number, hasVeto: boolean): string {
-  if (hasVeto) return "REPROVADO";
-  if (score > 80) return "Aprovar";
-  if (score >= 60) return "Amadurecer";
-  return "Kill";
-}
+import { BLOCO1_KEYS, BLOCO2_KEYS, type Origin, vetoKeys } from "../_shared/scorecard-schema.ts";
 
 // ── Parsing + normalização do output do agente ──────────────────────────────
 // Aceita variações do output (snake_case, nested {geral, especifico},
@@ -110,8 +37,9 @@ interface AgentOutput {
   verdict_hint?: string;
 }
 
-// Mapa: aliases (snake_case ou label PT) → chave canônica camelCase usada no
-// SCORECARD_META. Cobre Bloco 1 e Bloco 2 dos 3 origins.
+// Mapa: aliases (snake_case ou label PT) → chave canônica camelCase.
+// Cobre Bloco 1 e Bloco 2 dos 3 origins. Deve ser um superset das chaves
+// listadas em BLOCO1_KEYS/BLOCO2_KEYS.
 const KEY_ALIASES: Record<string, string> = {
   // Bloco 1
   diferencial_injusto: "diferencial",
@@ -177,7 +105,6 @@ const KEY_ALIASES: Record<string, string> = {
 function canonicalKey(rawKey: string): string | null {
   const lower = rawKey.toLowerCase().replace(/[\s\-]+/g, "_");
   if (KEY_ALIASES[lower]) return KEY_ALIASES[lower];
-  // Heurística: se já está em camelCase reconhecido, devolve direto
   const camel = lower.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
   if (KEY_ALIASES[camel.toLowerCase()]) return KEY_ALIASES[camel.toLowerCase()];
   return null;
@@ -197,12 +124,10 @@ function flattenScores(raw: unknown): Record<string, number> {
         if (canon) out[canon] = v;
       } else if (typeof v === "object" && !Array.isArray(v)) {
         const nested = v as Record<string, unknown>;
-        // {nota, peso} → extrai nota
         if (typeof nested.nota === "number") {
           const canon = canonicalKey(k);
           if (canon) out[canon] = nested.nota as number;
         } else {
-          // grupo aninhado (geral, especifico, bloco1, bloco2...)
           visit(nested);
         }
       }
@@ -212,7 +137,6 @@ function flattenScores(raw: unknown): Record<string, number> {
   return out;
 }
 
-// Flatten descriptions following the same nested/snake_case rules.
 function flattenDescriptions(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!raw || typeof raw !== "object") return out;
@@ -232,8 +156,7 @@ function flattenDescriptions(raw: unknown): Record<string, string> {
   return out;
 }
 
-// Se todas as notas ≤ 10, assume escala 0-10 e multiplica por 10 para
-// alinhar à escala 0-100 esperada pelo front e pelo calcFinalScore.
+// Se todas as notas ≤ 10, assume escala 0-10 e multiplica por 10.
 function rescaleIfNeeded(scores: Record<string, number>): Record<string, number> {
   const values = Object.values(scores);
   if (values.length === 0) return scores;
@@ -246,47 +169,36 @@ function rescaleIfNeeded(scores: Record<string, number>): Record<string, number>
   return scores;
 }
 
-// Normaliza vetos para o shape esperado pelo front: { veto_<key>: boolean }.
-// Aceita:
-//   - { veto_xxx: true, ... }
-//   - { xxx: true, ... }
-//   - { acionados: false } (significa nenhum veto)
-//   - { acionados: [<key>, ...] } (lista de vetos acionados)
-function normalizeVetos(
-  raw: unknown,
-  origin: Origin,
-): Record<string, boolean> {
+// Normaliza vetos para { veto_<key>: boolean }, cobrindo TODOS os vetos da
+// origem (mesmo os não mencionados no payload viram false explícito).
+function normalizeVetos(raw: unknown, origin: Origin): Record<string, boolean> {
   const out: Record<string, boolean> = {};
-  const vetoKeys = [...BLOCO1, ...BLOCO2[origin]].filter((f) => f.isVeto).map((f) => f.key);
-  // Inicializa todos como false
-  for (const k of vetoKeys) out[`veto_${k}`] = false;
+  const allowedVetos = vetoKeys(origin);
+  for (const k of allowedVetos) out[`veto_${k}`] = false;
   if (!raw || typeof raw !== "object") return out;
   const obj = raw as Record<string, unknown>;
-  // Caso "acionados"
+
   if ("acionados" in obj) {
     const a = obj.acionados;
     if (Array.isArray(a)) {
       for (const item of a) {
         if (typeof item !== "string") continue;
         const canon = canonicalKey(item);
-        if (canon && vetoKeys.includes(canon)) out[`veto_${canon}`] = true;
+        if (canon && allowedVetos.includes(canon)) out[`veto_${canon}`] = true;
       }
     }
-    // Se for boolean (false), mantém tudo false
     return out;
   }
-  // Caso flat: { veto_xxx: true } ou { xxx: true }
+
   for (const [k, v] of Object.entries(obj)) {
     if (v !== true) continue;
-    const raw = k.startsWith("veto_") ? k.slice(5) : k;
-    const canon = canonicalKey(raw);
-    if (canon && vetoKeys.includes(canon)) out[`veto_${canon}`] = true;
+    const bare = k.startsWith("veto_") ? k.slice(5) : k;
+    const canon = canonicalKey(bare);
+    if (canon && allowedVetos.includes(canon)) out[`veto_${canon}`] = true;
   }
   return out;
 }
 
-// Tenta extrair texto humano do summary mesmo quando o agente coloca um
-// objeto JSON (e.g. { startup, resumo_executivo, ... }) no campo.
 function extractSummary(raw: unknown): string | null {
   if (raw == null) return null;
   if (typeof raw === "string") {
@@ -296,9 +208,7 @@ function extractSummary(raw: unknown): string | null {
         const obj = parsed as Record<string, unknown>;
         if (typeof obj.resumo_executivo === "string") return obj.resumo_executivo;
       }
-    } catch {
-      /* string normal, devolve como veio */
-    }
+    } catch { /* string livre, devolve como veio */ }
     return raw;
   }
   if (typeof raw === "object") {
@@ -316,7 +226,6 @@ function parseOutput(raw: unknown): AgentOutput | null {
   try {
     return JSON.parse(raw);
   } catch {
-    // Fallback: agente devolveu markdown com cercas — extrai JSON
     const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (match) {
       try {
@@ -327,6 +236,16 @@ function parseOutput(raw: unknown): AgentOutput | null {
     }
     return null;
   }
+}
+
+// Garante que TODAS as chaves conhecidas do bloco 1/2 estejam presentes
+// (para o trigger acionar has_any_score corretamente e para a UI não
+// mostrar undefined em campos ausentes do payload do agente).
+function ensureAllKeysPresent(scores: Record<string, number>, origin: Origin): Record<string, number> {
+  const out = { ...scores };
+  for (const f of BLOCO1_KEYS) if (!(f.key in out)) out[f.key] = 0;
+  for (const f of BLOCO2_KEYS[origin]) if (!(f.key in out)) out[f.key] = 0;
+  return out;
 }
 
 interface VolundCallbackBody {
@@ -363,7 +282,6 @@ Deno.serve(async (req) => {
     const payload: VolundCallbackBody = await req.json();
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // Carrega evaluation + type da submission (precisa pra calc)
     const { data: current } = await admin
       .from("evaluations")
       .select("processing_status, submission_id, submissions:submission_id(type)")
@@ -375,7 +293,6 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: "already_completed" }, 200);
     }
 
-    // Falha reportada pelo Volund
     if (payload.status !== "completed") {
       await admin
         .from("evaluations")
@@ -402,15 +319,11 @@ Deno.serve(async (req) => {
       return json({ ok: true, status: "failed", reason: "invalid_output" }, 200);
     }
 
-    // Origin vem da submission (relação aninhada na query acima)
     const subRel = current.submissions as { type?: string } | null;
     const origin = (subRel?.type ?? "mercado") as Origin;
 
-    // Normalização — tolera nested {geral, especifico}, {nota, peso},
-    // snake_case / labels PT, escala 0-10 ou 0-100, vetos em vários formatos.
     const flatScores = rescaleIfNeeded(flattenScores(parsed.scores));
     const flatDescriptions = flattenDescriptions(parsed.descriptions);
-    // Vetos podem vir em parsed.vetos OU dentro de parsed.scores.acionados
     const vetoSource = parsed.vetos ?? parsed.scores ?? {};
     const vetoFlags = normalizeVetos(vetoSource, origin);
 
@@ -426,23 +339,21 @@ Deno.serve(async (req) => {
       return json({ ok: true, status: "failed", reason: "empty_scores" }, 200);
     }
 
-    // Merge: scores numéricos + flags de veto (front lê veto_<key> de scores)
-    const merged: Record<string, number | boolean> = { ...flatScores, ...vetoFlags };
-
-    const finalScore = calcFinalScore(merged, origin);
-    const hasVeto = checkVetos(merged, origin);
-    const verdict = getVerdict(finalScore, hasVeto);
+    // Merge: notas normalizadas + flags de veto. Preenche chaves ausentes com
+    // 0 para consistência com a UI. Trigger no banco recalcula
+    // final_score/has_veto/verdict — não tocamos essas colunas aqui.
+    const scores: Record<string, number | boolean> = {
+      ...ensureAllKeysPresent(flatScores, origin),
+      ...vetoFlags,
+    };
 
     const { error: updateErr } = await admin
       .from("evaluations")
       .update({
-        scores: merged,
+        scores,
         descriptions: Object.keys(flatDescriptions).length > 0 ? flatDescriptions : null,
         report: parsed.report ?? null,
         summary: extractSummary(parsed.summary),
-        final_score: Number(finalScore.toFixed(2)),
-        has_veto: hasVeto,
-        verdict,
         processing_status: "completed",
         processed_at: new Date().toISOString(),
         error_message: null,

@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SubmissionOrigin } from "./common";
 import {
   BLOCO1_FIELDS, BLOCO2_FIELDS,
-  calcFinalScore, checkVetos, getVerdict, SCORECARD_META, sumWeights,
+  previewFinalScore, previewHasVeto, previewVerdict, SCORECARD_META, sumWeights,
 } from "./scorecard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -71,9 +71,11 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
     if (submissionId) fetchScores();
   }, [submissionId, evaluationId]);
 
-  const finalScore = useMemo(() => calcFinalScore(scores, origin), [scores, origin]);
-  const hasVeto = useMemo(() => checkVetos(scores, origin), [scores, origin]);
-  const verdict = useMemo(() => getVerdict(finalScore, hasVeto), [finalScore, hasVeto]);
+  // Prévia enquanto o admin edita — o valor gravado no banco vem do trigger
+  // `evaluations_recompute_verdict_trigger` (server é fonte de verdade).
+  const finalScore = useMemo(() => previewFinalScore(scores, origin), [scores, origin]);
+  const hasVeto = useMemo(() => previewHasVeto(scores, origin), [scores, origin]);
+  const verdict = useMemo(() => previewVerdict(finalScore, hasVeto), [finalScore, hasVeto]);
 
   const b1WeightSum = useMemo(() => sumWeights(BLOCO1_FIELDS), []);
   const b2WeightSum = useMemo(() => sumWeights(bloco2), [bloco2]);
@@ -92,21 +94,26 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
 
+      // NÃO envia final_score / has_veto / verdict — o trigger
+      // `evaluations_recompute_verdict_trigger` recalcula server-side a partir
+      // de `scores` + submissions.type.
       const scoreData = {
-        scores: scores as any,
-        descriptions: descriptions as any,
-        final_score: finalScore,
-        has_veto: hasVeto,
-        verdict: verdict.label,
+        scores: scores as Record<string, number | boolean>,
+        descriptions: descriptions as Record<string, string>,
         updated_at: new Date().toISOString(),
       };
 
+      let saved: { id: string; final_score: number | null; has_veto: boolean | null; verdict: string | null } | null = null;
+
       if (currentEvalId) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("evaluations")
           .update(scoreData)
-          .eq("id", currentEvalId);
+          .eq("id", currentEvalId)
+          .select("id, final_score, has_veto, verdict")
+          .single();
         if (error) throw error;
+        saved = data;
       } else {
         const { data: inserted, error } = await supabase
           .from("evaluations")
@@ -117,16 +124,22 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
             source: "manual",
             processing_status: "completed",
           })
-          .select("id")
+          .select("id, final_score, has_veto, verdict")
           .single();
         if (error) throw error;
         if (inserted) setCurrentEvalId(inserted.id);
+        saved = inserted;
       }
 
+      // Usa valores devolvidos pelo servidor (autoritativos) no toast.
+      const serverFinal = Number(saved?.final_score ?? 0);
+      const serverVeto = !!saved?.has_veto;
+      const serverVerdict = saved?.verdict || verdict.label;
+
       // Suggest move
-      if (hasVeto || finalScore < 60) {
+      if (serverVeto || serverFinal < 60) {
         toast.success("Avaliação salva!", {
-          description: `Nota: ${finalScore.toFixed(1)} - ${verdict.label}`,
+          description: `Nota: ${serverFinal.toFixed(1)} - ${serverVerdict}`,
           action: {
             label: "Mover → Despriorizado",
             onClick: async () => {
@@ -136,9 +149,9 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
             },
           },
         });
-      } else if (finalScore > 80) {
+      } else if (serverFinal > 80) {
         toast.success("Avaliação salva!", {
-          description: `Nota: ${finalScore.toFixed(1)} - ${verdict.label}`,
+          description: `Nota: ${serverFinal.toFixed(1)} - ${serverVerdict}`,
           action: {
             label: "Mover → Ongoing",
             onClick: async () => {
@@ -150,13 +163,14 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
         });
       } else {
         toast.success("Avaliação salva!", {
-          description: `Nota: ${finalScore.toFixed(1)} - ${verdict.label}`,
+          description: `Nota: ${serverFinal.toFixed(1)} - ${serverVerdict}`,
         });
       }
 
       onSaved();
-    } catch (err: any) {
-      toast.error("Erro ao salvar", { description: err.message });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error("Erro ao salvar", { description: msg });
     } finally {
       setSaving(false);
     }
@@ -191,8 +205,9 @@ export function ScorecardForm({ submissionId, origin, onSaved, evaluationId }: S
     <div className="space-y-6">
       <div className={`flex items-center justify-between p-4 rounded-xl border ${verdictBg}`}>
         <div>
-          <p className="text-xs text-muted-foreground">Nota Final</p>
+          <p className="text-xs text-muted-foreground">Nota Final (prévia)</p>
           <p className={`text-4xl font-black ${scoreColor}`}>{finalScore.toFixed(1)}</p>
+          <p className="text-[10px] text-muted-foreground/70 mt-1">Servidor recalcula ao salvar</p>
         </div>
         <div className={`px-4 py-2 rounded-full text-sm font-bold border ${verdictBg} ${scoreColor}`}>
           {hasVeto && <Skull className="inline w-4 h-4 mr-1" />}
