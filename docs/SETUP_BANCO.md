@@ -1,100 +1,80 @@
-# Setup do banco — restaurar o backup e aplicar as correções
+# Setup do banco — schema from scratch
 
-O banco deste projeto nasce do backup completo do ambiente original
-(`auroraventures_260710.backup`, formato `pg_dump` custom — inclui `auth.users`,
-todo o schema `public` com dados, policies, triggers e os metadados do `storage`).
+O banco deste projeto é criado **do zero** por 8 migrations consolidadas em
+`supabase/migrations/`. Não há mais dependência do backup `pg_dump` do
+ambiente original.
 
-> ⚠️ **O que o backup NÃO contém:** os **arquivos físicos** dos buckets
-> (`transcripts` e `week-documents`). O dump traz apenas as *rows* de
-> `storage.objects`. Os arquivos precisam ser copiados à parte (passo 4).
+> **Histórico:** as migrations antigas (uma-por-mudança) do projeto original
+> estão preservadas em `supabase/migrations-legacy/` apenas como referência.
+> **Não executar.** O estado final delas já está embutido nas 8 migrations
+> consolidadas.
 
 ## 1. Criar o projeto Supabase novo
 
-1. [supabase.com](https://supabase.com) → New project (região: `sa-east-1` se o
-   público é BR). Guarde a senha do Postgres.
+1. [supabase.com](https://supabase.com) → New project (região: `sa-east-1` se
+   o público é BR). Guarde a senha do Postgres.
 2. Anote o **project ref** (na URL do dashboard) e as chaves em
    Settings → API (`anon` e `service_role`).
+3. Atualize `supabase/config.toml` (`project_id = "..."`) e `.env` com as chaves.
 
-## 2. Restaurar o backup
-
-Com o [PostgreSQL client tools](https://www.postgresql.org/download/) instalado
-(`pg_restore` 15+):
-
-```bash
-# connection string em Settings → Database → Connection string (URI, porta 5432)
-pg_restore \
-  --dbname "postgresql://postgres:[SENHA]@db.[PROJECT_REF].supabase.co:5432/postgres" \
-  --no-owner --no-privileges \
-  --clean --if-exists \
-  auroraventures_260710.backup
-```
-
-Notas:
-- Erros de "role does not exist" / objetos internos do Supabase (`auth.schema_migrations`,
-  `storage.migrations`, extensões) podem aparecer e são inofensivos — o que importa
-  é `auth.users`, `public.*` e `storage.buckets/objects` restaurarem sem erro.
-- Se preferir granularidade, restaure por schema: `--schema=auth --schema=public --schema=storage`.
-- **Senhas dos usuários são preservadas** (hashes em `auth.users`). O login por
-  e-mail/senha continua funcionando.
-
-## 3. Aplicar as migrations corretivas
+## 2. Aplicar as migrations
 
 ```bash
 supabase login
-supabase link --project-ref [PROJECT_REF]   # atualize também supabase/config.toml
-supabase db push                            # aplica supabase/migrations/20260710*
+supabase link --project-ref [PROJECT_REF]
+supabase db push
 ```
 
-As 8 migrations corrigem, nesta ordem:
+As 8 migrations rodam em ordem cronológica (`20260710000000_..` → `20260710000700_..`):
 
-| Migration | O que faz |
-|---|---|
-| C1 | enum `viewer` garantido + CHECK de `calls.status` com `'rascunho'` (destrava o Salvar Rascunho) |
-| C2 | policy de SELECT para viewer em `submissions` (conserta o DashboardViewer) |
-| C3 | SELECT para colaborador em `meetings`/`ongoing_weeks`/`week_documents`/`submission_history` + storage (consertam as abas de `/iniciativa/:id`) |
-| C4 | `meetings.transcript_path` + backfill (fim das transcrições que somem — a signed URL expirava em 1h) |
-| C5 | CHECKs/FKs faltantes em `evaluations`, `chat_sessions`, `readouts` |
-| C6 | corrige `calls.created_by` gravado com `profiles.id` |
-| C7 | DROP da tabela legada `submission_scores` (com salvaguarda de backfill) + bucket órfão |
-| C8 | view `role_audit_divergences` para auditar roles herdados da era insegura |
+| # | Arquivo | Domínio |
+|---|---|---|
+| 00 | `20260710000000_base.sql` | Extensões (`pgcrypto`), função `update_updated_at_column()` |
+| 01 | `20260710000100_auth_roles_profiles.sql` | Enum `app_role` (com `viewer`), `profiles`, `user_roles`, `has_role()`, `handle_new_user()`, sync/prevent triggers, view `role_audit_divergences` |
+| 02 | `20260710000200_submissions_and_history.sql` | `submissions`, `submission_history`, kanban CHECK, RLS por role (admin/colaborador/viewer/founder) |
+| 03 | `20260710000300_meetings_ongoing_storage.sql` | `meetings` (com todas colunas Volund + `transcript_path`), `ongoing_weeks`, `week_documents`, buckets `transcripts` e `week-documents` |
+| 04 | `20260710000400_evaluations_chat_readouts.sql` | `evaluations` (substitui `submission_scores`), `chat_sessions`/`chat_messages` (copilot), `readouts` |
+| 05 | `20260710000500_open_calls.sql` | `calls` (status `rascunho`\|`ativa`\|`encerrada`), `call_fields`, `call_responses` |
+| 06 | `20260710000600_vesting_and_ongoing_share.sql` | `vesting_indicators`, `vesting_measurements` (com `value_before`), `vesting_week_notes`, `ongoing_share_links` + RPC `get_public_ongoing` |
+| 07 | `20260710000700_workspace_tasks.sql` | Painel interno de tarefas do produto (rota `/admin` workspace) |
 
-As migrations antigas do projeto original estão em `supabase/migrations-legacy/`
-apenas como referência — **não executar** (o restore já traz o schema).
+Cada arquivo tem no cabeçalho um bloco `Consolida:` listando as migrations
+legacy que foram absorvidas, além de `Descartes:` com o que foi
+deliberadamente removido (data-fixes, versões inseguras substituídas, etc.).
 
-## 4. Copiar os arquivos do Storage
+## 3. Popular dados iniciais (opcional)
 
-Os buckets `transcripts` e `week-documents` precisam dos arquivos físicos.
-Com acesso ao projeto antigo:
+O schema nasce **vazio** — sem chamadas de exemplo, sem roles pré-atribuídas.
+Fluxos automáticos:
 
-```bash
-# exemplo com supabase CLI (repita por bucket)
-supabase storage cp -r --linked ss://transcripts ./storage-export/transcripts --project-ref [REF_ANTIGO]
-supabase storage cp -r --linked ./storage-export/transcripts ss://transcripts --project-ref [REF_NOVO]
-```
+- **Signup** → `handle_new_user()` cria linha em `profiles` e atribui a role
+  automaticamente pelo domínio do email:
+  - `admin`: emails literais `rodrigo.miranda@beyondcompany.com.br` e
+    `filipe.moreira@beyondcompany.com.br`
+  - `colaborador`: qualquer `@beyondcompany.com.br`, `@extreme.digital`,
+    `@volund.com.br`
+  - `founder`: qualquer outro domínio
 
-(Alternativa: script com `service_role` dos dois projetos usando
-`storage.from(...).download()/upload()` — os paths devem ser idênticos, pois as
-rows de `storage.objects` e `meetings.transcript_path`/`week_documents.file_path`
-já apontam para eles.)
+- **Ajuste manual de role**: via Dashboard Supabase → Table Editor →
+  `public.user_roles` (o trigger `sync_user_role_to_profile` propaga
+  automaticamente para `profiles.role`).
 
-Se os arquivos do projeto antigo não estiverem mais acessíveis, rode
-`DELETE FROM storage.objects WHERE bucket_id IN ('transcripts','week-documents')`
-para não exibir downloads quebrados — as atas estruturadas (JSONB) continuam no banco.
+Um seed script (chamadas de exemplo, atribuição de `viewer` para stakeholders
+específicos) está registrado como follow-up em [FOLLOWUPS.md](./FOLLOWUPS.md).
 
-## 5. Configurar Auth
+## 4. Configurar Auth
 
 Em Authentication → Settings do projeto novo:
 
 1. **Site URL** = domínio do front (e adicionar em Redirect URLs).
-2. **E-mail**: confirmar signup habilitado (fluxo T1.1).
+2. **E-mail**: confirmar signup habilitado.
 3. **Google OAuth**: criar credenciais próprias no
    [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    (OAuth client ID, tipo Web) com redirect
-   `https://[PROJECT_REF].supabase.co/auth/v1/callback`, e habilitar o provider
-   Google com esse client id/secret. O login antigo era via Lovable; usuários
-   Google existentes continuam funcionando desde que o e-mail seja o mesmo.
+   `https://[PROJECT_REF].supabase.co/auth/v1/callback`, e habilitar o
+   provider Google com esse client id/secret.
 
-## 6. Secrets e deploy das Edge Functions
+## 5. Secrets e deploy das Edge Functions
 
 ```bash
 supabase secrets set \
@@ -117,13 +97,13 @@ supabase functions deploy send-confirmation-email
 supabase functions deploy initiative-mcp
 ```
 
-> A função `sign-transcripts` do projeto original **não existe mais** — ela não
-> tinha autenticação e assinava qualquer arquivo com service_role. O download de
-> transcrições agora é feito no client via `transcript_path` + RLS.
+## 6. Validar
 
-## 7. Validar
-
-1. `SELECT * FROM role_audit_divergences;` — corrigir roles divergentes via `user_roles`.
-2. Login com um usuário de cada role (admin, colaborador, founder, viewer).
-3. Founder A não enxerga submissões do founder B (`npm run test:e2e` cobre auth).
-4. Kanban, scorecard (manual + IA), reuniões/upload, ongoing e chamadas.
+1. `SELECT * FROM role_audit_divergences;` — deve estar vazia inicialmente
+   (só é útil quando roles são editadas manualmente contra a regra do domínio).
+2. Fazer signup com um email `@beyondcompany.com.br` → confirmar que a linha
+   apareceu em `profiles` E em `user_roles` com role `colaborador`.
+3. Fazer signup com um email externo → deve virar `founder`.
+4. Testar navegação nas rotas `/admin`, `/dashboard-colaborador`,
+   `/dashboard-founder`, `/dashboard-viewer`.
+5. Rodar `npm run test:e2e` para cobrir o fluxo end-to-end de auth + kanban.

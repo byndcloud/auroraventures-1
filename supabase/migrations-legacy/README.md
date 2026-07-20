@@ -1,14 +1,16 @@
 # Migrations legadas (histórico do projeto original)
 
-Estas 59 migrations documentam a evolução do banco no projeto original (Lovable).
-**NÃO devem ser executadas no projeto novo**: o schema completo já vem do restore
-do backup (`auroraventures_260710.backup`, formato pg_dump custom).
+Estas 59 migrations documentam a evolução do banco no projeto original
+(Lovable). **NÃO devem ser executadas no projeto novo.**
 
-O fluxo do banco neste repositório é:
+O schema atual do projeto é construído do zero pelas 8 migrations
+consolidadas em `supabase/migrations/` — cada uma agrega o **efeito
+líquido** de várias legacy do mesmo domínio, embutindo as correções C1–C8
+e descartando data-fixes pontuais, versões inseguras substituídas e
+duplicatas idempotentes.
 
-1. Criar o projeto Supabase novo.
-2. Restaurar o backup (`pg_restore`) — traz schema + dados + policies + triggers.
-3. Aplicar apenas as migrations de `supabase/migrations/` (série `20260710*`),
-   que corrigem os problemas conhecidos do schema original.
+Se quiser rastrear a origem de uma tabela/policy específica, cada arquivo
+consolidado tem no cabeçalho um bloco `Consolida:` listando as legacy
+absorvidas, e um bloco `Descartes:` com o que foi propositalmente removido.
 
-Mantidas aqui somente como referência histórica e para auditoria.
+Mantidas aqui apenas como referência histórica e para auditoria forense.

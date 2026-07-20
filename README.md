@@ -22,9 +22,10 @@ técnicos e fluxos quebrados corrigidos. O racional completo está em
 ### 1. Banco de dados
 
 Siga [`docs/SETUP_BANCO.md`](docs/SETUP_BANCO.md): criar o projeto Supabase,
-restaurar `auroraventures_260710.backup`, aplicar as migrations corretivas
-(`supabase db push`), copiar os arquivos do Storage e configurar Auth (Google
-OAuth próprio + Site URL).
+aplicar as 8 migrations consolidadas (`supabase db push`) e configurar Auth
+(Google OAuth próprio + Site URL). O schema é criado do zero — não há
+backup a restaurar; as roles são atribuídas automaticamente por domínio
+de email no signup.
 
 ### 2. Frontend
 
@@ -90,7 +91,7 @@ src/
   contexts/AuthContext # sessão + role (fonte: user_roles; RLS decide permissão)
   lib/                 # roles, labels de campos, utils
 supabase/
-  migrations/          # correções C1–C8 (aplicar após o restore)
+  migrations/          # 8 migrations consolidadas — schema completo do projeto
   migrations-legacy/   # histórico do projeto original (NÃO executar)
   functions/           # 7 Edge Functions (Volund, e-mail, MCP)
 docs/                  # blueprint da recriação + setup do banco
