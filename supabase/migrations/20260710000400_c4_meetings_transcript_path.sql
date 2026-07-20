@@ -22,7 +22,60 @@ WHERE transcript_url IS NOT NULL
   AND transcript_path IS NULL
   AND position('/object/sign/transcripts/' IN transcript_url) > 0;
 
--- Paths vêm URL-encoded na signed URL; decodifica os casos comuns (%20 etc.)
-UPDATE public.meetings
-SET transcript_path = replace(transcript_path, '%20', ' ')
-WHERE transcript_path LIKE '%\%20%';
+-- Paths vêm URL-encoded na signed URL. Precisamos de decode completo:
+-- só substituir %20 quebra downloads de arquivos com acento (%C3%A9), parênteses
+-- (%28/%29), + etc. Percorremos o texto byte a byte, montamos um bytea com os
+-- pares hex de %XX e reinterpretamos como UTF-8 no final — assim caracteres
+-- multi-byte (comuns em nomes de arquivo em português) são reconstruídos.
+DO $$
+DECLARE
+  r record;
+  buf bytea;
+  i integer;
+  ch text;
+  decoded text;
+BEGIN
+  FOR r IN
+    SELECT id, transcript_path
+      FROM public.meetings
+     WHERE transcript_path IS NOT NULL
+       AND transcript_path LIKE '%\%%' ESCAPE '\'
+  LOOP
+    buf := ''::bytea;
+    i := 1;
+    WHILE i <= length(r.transcript_path) LOOP
+      ch := substr(r.transcript_path, i, 1);
+      IF ch = '%' AND i + 2 <= length(r.transcript_path)
+         AND substr(r.transcript_path, i + 1, 2) ~ '^[0-9A-Fa-f]{2}$' THEN
+        buf := buf || decode(substr(r.transcript_path, i + 1, 2), 'hex');
+        i := i + 3;
+      ELSE
+        buf := buf || convert_to(ch, 'UTF8');
+        i := i + 1;
+      END IF;
+    END LOOP;
+    decoded := convert_from(buf, 'UTF8');
+    IF decoded <> r.transcript_path THEN
+      UPDATE public.meetings SET transcript_path = decoded WHERE id = r.id;
+    END IF;
+  END LOOP;
+END $$;
+
+-- Auditoria: URLs que NÃO estavam no formato signed reconhecido (public URLs,
+-- URLs externas antigas, etc.) ficaram com transcript_path = NULL. O operador
+-- precisa saber para investigar manualmente antes do download parar de funcionar.
+DO $$
+DECLARE
+  leftover integer;
+BEGIN
+  SELECT count(*) INTO leftover
+    FROM public.meetings
+   WHERE transcript_url IS NOT NULL
+     AND transcript_path IS NULL;
+
+  IF leftover > 0 THEN
+    RAISE NOTICE
+      'C4: % linha(s) de meetings ficaram com transcript_url != NULL mas transcript_path = NULL — formato de URL não reconhecido (public, externa ou legado). Investigar manualmente.',
+      leftover;
+  END IF;
+END $$;

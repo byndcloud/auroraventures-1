@@ -9,8 +9,12 @@
 --
 --   SELECT * FROM public.role_audit_divergences;
 
+-- DISTINCT ON (u.id): user_roles tem UNIQUE(user_id, role) mas não UNIQUE(user_id),
+-- então um usuário PODE ter múltiplas roles atribuídas. Sem o DISTINCT ON, a view
+-- duplicaria linhas nesse caso. ORDER BY ur.role garante determinismo (admin < ...
+-- < viewer alfabeticamente) — quem revisar vê a role "mais alta" primeiro.
 CREATE OR REPLACE VIEW public.role_audit_divergences AS
-SELECT
+SELECT DISTINCT ON (u.id)
   u.id            AS user_id,
   u.email,
   ur.role         AS role_atual,
@@ -42,7 +46,8 @@ WHERE ur.role IS DISTINCT FROM (
   END
 )
 -- 'viewer' é atribuição manual legítima — não é divergência
-AND ur.role <> 'viewer';
+AND ur.role <> 'viewer'
+ORDER BY u.id, ur.role;
 
 -- View administrativa: apenas service_role/dashboard enxergam
 REVOKE ALL ON public.role_audit_divergences FROM anon, authenticated;

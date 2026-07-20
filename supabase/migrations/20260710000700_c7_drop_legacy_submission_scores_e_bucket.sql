@@ -10,6 +10,7 @@
 DO $$
 DECLARE
   missing integer;
+  deps    text;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.tables
@@ -23,6 +24,31 @@ BEGIN
       RAISE EXCEPTION
         'submission_scores tem % linha(s) sem correspondente em evaluations — backfill incompleto, DROP abortado',
         missing;
+    END IF;
+
+    -- Salvaguarda extra: sem CASCADE, o DROP falha silenciosamente no meio do
+    -- lote se houver views/rules/functions dependentes. Enumera antes e aborta
+    -- com mensagem clara — o operador decide se remove os dependentes na mão
+    -- ou substitui por DROP CASCADE consciente.
+    SELECT string_agg(
+             dep_ns.nspname || '.' || dep_rel.relname || ' (' || dep_rel.relkind || ')',
+             ', '
+           )
+      INTO deps
+      FROM pg_depend d
+      JOIN pg_rewrite r        ON r.oid = d.objid
+      JOIN pg_class   dep_rel  ON dep_rel.oid = r.ev_class
+      JOIN pg_namespace dep_ns ON dep_ns.oid = dep_rel.relnamespace
+      JOIN pg_class   src_rel  ON src_rel.oid = d.refobjid
+      JOIN pg_namespace src_ns ON src_ns.oid = src_rel.relnamespace
+     WHERE src_ns.nspname = 'public'
+       AND src_rel.relname = 'submission_scores'
+       AND dep_rel.relname <> 'submission_scores';
+
+    IF deps IS NOT NULL THEN
+      RAISE EXCEPTION
+        'submission_scores tem dependentes: % — remover manualmente antes ou substituir por DROP TABLE ... CASCADE consciente',
+        deps;
     END IF;
 
     DROP TABLE public.submission_scores;
