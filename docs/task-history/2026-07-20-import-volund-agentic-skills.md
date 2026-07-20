@@ -1,5 +1,5 @@
 ---
-task: Importar skills da Zelar e infra de fluxo (AGENTS.md, CLAUDE.md, rules, task-history, adr)
+task: Importar skills da esteira agêntica Volund e infra de fluxo (AGENTS.md, CLAUDE.md, rules, task-history, adr)
 data: 2026-07-20
 tipo: chore
 rota: direta
@@ -8,11 +8,11 @@ skills_usados: []
 
 ## Decisões tomadas
 
-- **Trazer as 6 skills da Zelar (`pre-analysis`, `advisor`, `frontend`,
-  `backend-architect`, `qa-test-strategist`, `security-auditor`) para
-  `.claude/skills/`** em vez de escrever do zero. Motivo: as skills da Zelar já foram
-  desenhadas como stack-agnostic e passaram por uso real; recriar seria retrabalho e
-  perderia a validação empírica.
+- **Trazer as 6 skills da esteira agêntica Volund (`pre-analysis`, `advisor`,
+  `frontend`, `backend-architect`, `qa-test-strategist`, `security-auditor`) para
+  `.claude/skills/`** em vez de escrever do zero. Motivo: as skills da esteira já
+  foram desenhadas como stack-agnostic e passaram por uso real; recriar seria
+  retrabalho e perderia a validação empírica.
 - **Copiar 4 skills 1:1** (`pre-analysis`, `advisor`, `qa-test-strategist`,
   `security-auditor`) — zero ajuste, são 100% genéricas.
 - **Omitir `backend-architect/scripts/scaffold.sh`** — é para greenfield genérico;
@@ -22,13 +22,14 @@ skills_usados: []
 - **Adaptar o bloco "Inventário de componentes" do `frontend/SKILL.md`** para os
   primitives reais do aurora (shadcn/ui + Radix + `sonner` + `lucide-react` +
   `react-hook-form` + `<AuroraLogo>` + `<Header>` de `landing/`) em vez dos primitives
-  Zelar-específicos (Base UI + `<BrandLogo>` + `<AppTopbar>`).
-- **Criar `AGENTS.md` adaptado do Zelar** — mesma estrutura de 7 etapas, mas:
+  do projeto de origem (Base UI + `<BrandLogo>` + `<AppTopbar>`).
+- **Criar `AGENTS.md` adaptado da esteira** — mesma estrutura de 7 etapas, mas:
   - Etapa 2 aponta para `CLAUDE.md` + `docs/BLUEPRINT_RECRIACAO.md` (aurora tem docs
-    funcionais específicas que a Zelar não tem)
+    funcionais específicas que a versão original da esteira não tem)
   - Etapa 4c (harness) mapeia para os comandos reais do aurora (`npm run
-    lint/typecheck/build/test/test:e2e` + `triage.sh --diff`) — Zelar cita "harness"
-    mas os scripts não existem, aqui a expectativa fica alinhada com o que roda
+    lint/typecheck/build/test/test:e2e` + `triage.sh --diff`) — a esteira cita
+    "harness" mas os scripts não existem; aqui a expectativa fica alinhada com o que
+    de fato roda
   - Etapa 7 promovida a obrigatória com formato completo do frontmatter + 5 seções
 - **Criar `CLAUDE.md` do aurora** com stack real (Vite/React 18/Radix/shadcn/TanStack
   Query/Supabase — não Next.js/Base UI), convenções extraídas do `README.md` e do
@@ -67,10 +68,10 @@ skills_usados: []
   mesmo assim, o histórico fica lacunoso. Sem harness automatizado que bloqueie.
 - **`triage.sh` tem line endings a validar** — script veio via `Copy-Item` do
   PowerShell no Windows; se saiu com CRLF, não roda em CI Linux até rodar `dos2unix`
-  ou re-salvar como LF.
+  ou re-salvar como LF. Mitigado por `.gitattributes` criado no mesmo commit.
 - **Skill `backend-architect/SKILL.md` teve edit manual** — a menção original ao
   `scripts/scaffold.sh` foi substituída por parágrafo específico do aurora. Se a
-  Zelar atualizar o SKILL.md upstream, o merge exige atenção nesse ponto.
+  esteira Volund atualizar o SKILL.md upstream, o merge exige atenção nesse ponto.
 
 ## Dependências criadas
 
