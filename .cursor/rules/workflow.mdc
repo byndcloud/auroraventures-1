@@ -1,0 +1,34 @@
+---
+description: Fluxo obrigatório de execução de tasks no projeto Aurora — leia AGENTS.md antes de qualquer ação.
+alwaysApply: true
+---
+
+# Workflow
+
+Toda task neste projeto segue o fluxo definido em [`AGENTS.md`](mdc:AGENTS.md).
+Leia esse arquivo antes de qualquer ação.
+
+## Resumo do fluxo (leia AGENTS.md para o detalhe completo)
+
+1. **Etapa 2** — carregar contexto: [`CLAUDE.md`](mdc:CLAUDE.md) +
+   [`docs/BLUEPRINT_RECRIACAO.md`](mdc:docs/BLUEPRINT_RECRIACAO.md) +
+   entradas relevantes de [`docs/task-history/_index.md`](mdc:docs/task-history/_index.md)
+2. **Etapa 3** — rodar o skill `pre-analysis` (`.claude/skills/pre-analysis/SKILL.md`)
+   para classificar e rotear (Caminho A direto ou Caminho B via Advisor)
+3. **Etapa 3b** — se Caminho B, rodar o skill `advisor`
+   (`.claude/skills/advisor/SKILL.md`) para sequenciar skills
+4. **Etapa 4** — executar os skills na ordem, um por vez; harness ao fim de cada um
+   (`npm run lint && npm run typecheck && npm run build`; `npm test` / `npm run test:e2e`
+   / `.claude/skills/security-auditor/scripts/triage.sh --diff` conforme escopo)
+5. **Etapa 5** — apresentar resumo para review humano; aguardar aprovação
+6. **Etapa 6** — commit em Conventional Commits
+7. **Etapa 7** — registrar em [`docs/task-history/`](mdc:docs/task-history/) +
+   atualizar `_index.md`; ADR em [`docs/adr/`](mdc:docs/adr/) se houve decisão arquitetural
+
+## Regras invioláveis
+
+- Nunca commite sem aprovação humana explícita
+- Nunca commite com BLOQUEANTES abertos no harness
+- Nunca pule Etapa 2 (contexto) ou Etapa 3 (pre-analysis)
+- Nunca rode migrations de `supabase/migrations-legacy/`
+- Sempre registre a memória após o commit (Etapa 7)

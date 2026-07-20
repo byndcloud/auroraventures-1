@@ -1,0 +1,46 @@
+---
+description: Mapa das skills disponíveis em .claude/skills/ e quando invocar cada uma.
+alwaysApply: true
+---
+
+# Skills disponíveis
+
+Todas em [`.claude/skills/`](mdc:.claude/skills). Cada skill tem um `SKILL.md`
+(entrypoint) e `references/*.md` (leia sob demanda, conforme o escopo).
+
+O fluxo de invocação está em [`AGENTS.md`](mdc:AGENTS.md) — nunca pule pre-analysis.
+
+## Skills de roteamento (sempre acionadas em sequência)
+
+| Skill | Quando | Entrypoint |
+|---|---|---|
+| **pre-analysis** | 1ª skill em TODA task, logo após ler o contexto. Classifica e roteia. | [`.claude/skills/pre-analysis/SKILL.md`](mdc:.claude/skills/pre-analysis/SKILL.md) |
+| **advisor** | Apenas se pre-analysis indicar Caminho B (multi-domínio ou impacto alto). Sequencia skills. | [`.claude/skills/advisor/SKILL.md`](mdc:.claude/skills/advisor/SKILL.md) |
+
+## Skills de execução (acionadas pelo pre-analysis/advisor)
+
+| Skill | Quando invocar | Entrypoint |
+|---|---|---|
+| **frontend** | Componente, página, layout, a11y, animação, design tokens, form, estado de UI, code review de front | [`.claude/skills/frontend/SKILL.md`](mdc:.claude/skills/frontend/SKILL.md) |
+| **backend-architect** | Edge Function, schema, RLS, contrato de API, auth, storage, jobs, observabilidade, escalabilidade | [`.claude/skills/backend-architect/SKILL.md`](mdc:.claude/skills/backend-architect/SKILL.md) |
+| **qa-test-strategist** | Escrever testes, planejar cobertura, auditar suíte, evals de LLM. Sempre acionada em mudanças de comportamento observável. | [`.claude/skills/qa-test-strategist/SKILL.md`](mdc:.claude/skills/qa-test-strategist/SKILL.md) |
+| **security-auditor** | Diff-review, auth, RLS, PII, inputs externos, Volund OS, Storage signed URLs. Sempre acionada quando toca auth/dados sensíveis. | [`.claude/skills/security-auditor/SKILL.md`](mdc:.claude/skills/security-auditor/SKILL.md) |
+
+## Scripts utilitários
+
+Rodar via terminal quando aplicável:
+
+- `.claude/skills/security-auditor/scripts/triage.sh --diff` — pré-pass zero-LLM
+  para smells de segurança em `git diff` (secrets, SQL concat, CORS `*`, etc.)
+- `.claude/skills/frontend/scripts/audit-a11y.py <url>` — auditoria de a11y
+  em URL local
+- `.claude/skills/frontend/scripts/analyze-bundle.py <stats.json>` — análise
+  de bundle a partir de output de build
+
+## Regras de uso
+
+- **Nunca leia todos os `references/` de uma skill de uma vez** — use a tabela no
+  próprio `SKILL.md` para escolher só o que a task demanda
+- **Nunca invoque skills fora da ordem** definida pelo pre-analysis ou advisor
+- **Em caso de dúvida entre invocar ou não uma skill**, invoque — é melhor um eval
+  desnecessário do que pular uma validação importante (regra do Advisor)
