@@ -1,6 +1,12 @@
 // INVARIANTE DE ARQUITETURA: Os dados deste componente são vinculados exclusivamente ao submission_id.
 // O campo `status` da submissão (coluna do Kanban) não afeta a leitura nem a escrita das reuniões.
 // Ao mover um card entre colunas, apenas submissions.status é alterado no banco - os demais dados permanecem intactos.
+//
+// TODO(monolith-split): quebrar este arquivo (≈750L) conforme §6.5 do BLUEPRINT em:
+//   - MeetingsUploadPanel     (dropzone + fila de upload)
+//   - MeetingAccordion        (item da lista com ata estruturada + dialogs)
+//   - MeetingMinutesViewer    (render standalone da minutes_structured)
+// Rastreamento: docs/FOLLOWUPS.md · "Monolith split — MeetingsTab".
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";

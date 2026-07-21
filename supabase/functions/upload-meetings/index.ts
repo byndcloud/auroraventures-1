@@ -80,18 +80,22 @@ Deno.serve(async (req) => {
     const VOLUND_AGENT_ID = Deno.env.get("VOLUND_AGENT_ID");
     const CALLBACK_SECRET = Deno.env.get("VOLUND_CALLBACK_SECRET");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     if (!VOLUND_API_KEY || !VOLUND_AGENT_ID || !CALLBACK_SECRET) {
       return json({ error: "Missing Volund secrets" }, 500);
     }
 
-    // Cliente com a JWT do usuário (para checagem de role via RLS)
+    // userClient com ANON_KEY: RLS aplica sobre o JWT do usuário; nenhum
+    // bypass acidental. `admin` (service_role) usado somente nas mutações
+    // privilegiadas (Storage signed URL + meetings INSERT/UPDATE).
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Missing auth" }, 401);
 
-    const userClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: { user }, error: userErr } = await userClient.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);

@@ -545,7 +545,55 @@
   }
 }
 
+/* ============================================================================
+ * Print styles — usado por IniciativaDetalhe (Exportar PDF via window.print)
+ * ADR-0002: substitui html2canvas-pro + jspdf.
+ * ========================================================================== */
 @media print {
-  nav, .print\:hidden { display: none !important; }
-  body { background: white !important; color: black !important; }
+  /* Esconde chrome de navegação / botões / sticky nav */
+  nav, .print\:hidden,
+  header.sticky, [role="tablist"] { display: none !important; }
+
+  /* Fundo branco + texto escuro (evita gasto absurdo de toner com o tema dark) */
+  html, body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Reseta cores dos wrappers principais para papel */
+  #iniciativa-root,
+  .hero-gradient,
+  main, article, section, aside {
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  /* Cards / paineis com borda sutil para ler no papel */
+  .bg-card, .bg-card\/30, .bg-card\/50, .bg-card\/20 {
+    background: white !important;
+    border: 1px solid #d4d4d4 !important;
+    color: black !important;
+  }
+
+  /* Texto muted continua legível */
+  .text-muted-foreground,
+  .text-white\/70,
+  .text-white\/60 {
+    color: #4b5563 !important;
+  }
+
+  /* Cor primária vira preto no papel — evita perda de fidelidade em cinza */
+  .text-primary { color: #c2410c !important; }
+
+  /* Tabelas legíveis */
+  table { border-collapse: collapse !important; }
+  th, td { border: 1px solid #d4d4d4 !important; padding: 4px 8px !important; }
+
+  /* Evita cortes ruins entre páginas */
+  h1, h2, h3, .page-break-avoid { page-break-inside: avoid; break-inside: avoid; }
+  section, article { page-break-inside: auto; }
+
+  /* Página A4 com margem mínima */
+  @page { size: A4 portrait; margin: 12mm; }
 }

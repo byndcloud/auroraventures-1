@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
     const AGENT_ID = Deno.env.get("VOLUND_EVALUATION_AGENT_ID");
     const CALLBACK_SECRET = Deno.env.get("VOLUND_CALLBACK_SECRET");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     if (!VOLUND_API_KEY || !AGENT_ID || !CALLBACK_SECRET) {
@@ -55,8 +56,12 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Missing auth" }, 401);
 
-    const userClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    // userClient com ANON_KEY: RLS aplica sobre o JWT do usuário; nenhum
+    // bypass acidental via service_role. Usamos `admin` (SERVICE_ROLE) só
+    // nas mutações que exigem privilégio.
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: { user }, error: userErr } = await userClient.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);

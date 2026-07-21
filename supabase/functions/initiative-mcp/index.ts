@@ -25,6 +25,7 @@ import { Hono } from "hono";
 import { McpServer, StreamableHttpTransport, RpcError, JSON_RPC_ERROR_CODES } from "mcp-lite";
 import { z } from "zod";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { corsHeaders as sharedCors } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -48,8 +49,11 @@ function extractTranscriptPath(signedUrl: string | null): string | null {
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+// CORS: usa o Access-Control-Allow-Origin restrito de _shared/cors.ts
+// (secret CORS_ORIGIN) e complementa com os headers específicos do transport
+// MCP (accept, mcp-session-id, mcp-protocol-version).
 const corsHeaders: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
+  ...sharedCors,
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, accept, mcp-session-id, mcp-protocol-version",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",

@@ -8,6 +8,13 @@
 //   3. Detalhe da semana selecionada: medições por indicador + dificuldades
 //      e destaques (editável para admin; read-only com prop readOnly)
 //
+// TODO(monolith-split): quebrar este arquivo (≈700L) conforme §6.5 do BLUEPRINT em:
+//   - VestingProgressChart      (bloco 1)
+//   - VestingWeeksMatrix        (bloco 2 — matriz semanas × indicadores)
+//   - WeekMeasurementsEditor    (bloco 3 — form de medições)
+//   - WeekHighlightsForm        (dificuldades + destaques)
+// Rastreamento: docs/FOLLOWUPS.md · "Monolith split — VestingWeeklySection".
+//
 // Ao salvar a medição da semana mais recente, o snapshot do indicador em
 // vesting_indicators (current_value/status) é atualizado — o dashboard
 // existente continua refletindo a "foto de hoje".

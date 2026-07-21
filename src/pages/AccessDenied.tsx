@@ -6,15 +6,21 @@ import { ShieldX } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function AccessDenied() {
-  const { profile } = useAuth();
+  const { profile, roleError } = useAuth();
   const navigate = useNavigate();
 
+  // Só faz auto-redirect quando o usuário TEM uma role válida (foi barrado por
+  // não estar na `allowedRoles` da rota). Se roleError=true (user_roles vazio),
+  // mantém-se na tela e explica o problema — auto-redirect entraria em loop.
   useEffect(() => {
+    if (roleError || !profile) return;
+    const role = profile.role;
+    if (role === null) return;
     const timer = setTimeout(() => {
-      navigate(profile ? getDashboardPath(profile.role) : "/");
+      navigate(getDashboardPath(role));
     }, 3000);
     return () => clearTimeout(timer);
-  }, [profile, navigate]);
+  }, [profile, roleError, navigate]);
 
   return (
     <div className="min-h-screen bg-background hero-gradient flex items-center justify-center px-6">
@@ -27,9 +33,17 @@ export default function AccessDenied() {
           <ShieldX className="w-10 h-10 text-destructive" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
-        <p className="text-muted-foreground">
-          Você não tem permissão para acessar esta página. Redirecionando para o seu painel...
-        </p>
+        {roleError ? (
+          <p className="text-muted-foreground">
+            Sua conta ainda não tem uma role atribuída. Entre em contato com o
+            administrador para liberar o acesso.
+          </p>
+        ) : (
+          <p className="text-muted-foreground">
+            Você não tem permissão para acessar esta página. Redirecionando
+            para o seu painel...
+          </p>
+        )}
       </motion.div>
     </div>
   );

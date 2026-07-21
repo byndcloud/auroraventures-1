@@ -3,6 +3,14 @@
 // indicadores (vesting) e este conteúdo passou a viver na aba Reuniões,
 // dentro do dropdown "Reuniões de checkpoint".
 //
+// TODO(monolith-split): quebrar este arquivo (≈1400L) conforme §6.5 do
+// BLUEPRINT em:
+//   - WeekAccordion         (accordion de uma semana, com header + botões)
+//   - WeekDocumentsList     (upload/lista/download de week_documents)
+//   - WeekMeetingsList      (lista de meetings da semana + dialogs)
+//   - WeekNotesForm         (notas editáveis por semana — quando implementado)
+// Rastreamento: docs/FOLLOWUPS.md · "Monolith split — CheckpointMeetingsSection".
+//
 // Estrutura:
 //   - Botão "Inserir Semana" no header (cria nova semana)
 //   - Lista de semanas em accordion

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, RefreshCw, LogOut, Eye } from "lucide-react";
 import { AuroraLogo } from "@/components/AuroraLogo";
@@ -7,74 +7,25 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { FilterBar } from "@/components/admin/FilterBar";
 import { KanbanColumn } from "@/components/admin/KanbanColumn";
 import { KpiCards } from "@/components/admin/KpiCards";
 import { KanbanSubmission, KANBAN_PHASES, OriginFilter } from "@/components/admin/kanban";
-import { SubmissionOrigin } from "@/components/admin/common";
+import { useSubmissionsWithScores } from "@/features/submissions/hooks";
 
 const DashboardViewer = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [submissions, setSubmissions] = useState<KanbanSubmission[]>([]);
   const [filter, setFilter] = useState<OriginFilter>("todos");
-  const [loading, setLoading] = useState(true);
+
+  const { data: fetched, isLoading, isFetching, refetch } = useSubmissionsWithScores();
+  const submissions = useMemo(() => fetched ?? [], [fetched]);
+  const loading = isLoading || isFetching;
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: subs, error: subsErr } = await supabase
-        .from("submissions")
-        .select("id, project_name, type, status, created_at, user_id, due_date, data")
-        .order("created_at", { ascending: false })
-        .limit(500);
-
-      if (subsErr) throw subsErr;
-
-      // Avaliação mais recente (completed) por submission.
-      const { data: scoresData } = await supabase
-        .from("evaluations")
-        .select("submission_id, scores, final_score, has_veto, verdict, created_at")
-        .eq("processing_status", "completed")
-        .order("created_at", { ascending: false });
-
-      const scoresMap = new Map<string, any>();
-      (scoresData || []).forEach((s: any) => {
-        if (!scoresMap.has(s.submission_id)) {
-          scoresMap.set(s.submission_id, {
-            scores: s.scores,
-            final_score: s.final_score,
-            has_veto: s.has_veto,
-            verdict: s.verdict,
-          });
-        }
-      });
-
-      const mapped: KanbanSubmission[] = (subs || []).map((s: any) => ({
-        id: s.id,
-        project_name: s.project_name,
-        type: s.type as SubmissionOrigin,
-        status: s.status,
-        data: (typeof s.data === 'object' && s.data !== null ? s.data : {}) as Record<string, any>,
-        created_at: s.created_at,
-        user_id: s.user_id,
-        due_date: s.due_date ?? null,
-        scores: scoresMap.get(s.id) || null,
-      }));
-
-      setSubmissions(mapped);
-    } catch (err) {
-      console.error("Error fetching data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const filtered = useMemo(
     () => filter === "todos" ? submissions : submissions.filter((s) => s.type === filter),

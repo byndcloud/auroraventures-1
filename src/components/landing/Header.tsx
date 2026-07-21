@@ -45,7 +45,7 @@ export function Header() {
     return () => observer.disconnect();
   }, []);
 
-  const dashboardPath = !session || !profile
+  const dashboardPath = !session || !profile || profile.role === null
     ? "/login"
     : getDashboardPath(profile.role);
 

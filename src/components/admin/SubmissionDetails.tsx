@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Pencil, Save, X, Loader2, Calendar, FolderOpen, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,75 +8,16 @@ import { KanbanSubmission } from "./kanban";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { buildLabelMap } from "@/lib/submission-field-labels";
 
 interface SubmissionDetailsProps {
   submission: KanbanSubmission;
   onSaved?: () => void;
 }
 
-// Maps data keys → actual form question labels
-const FIELD_LABELS: Record<string, string> = {
-  // Solução
-  solutionName: "Nome da solução/empresa",
-  shortDescription: "Descreva o que a solução faz em 50 caracteres ou menos",
-  whyIdea: "Por que você escolheu esta ideia? Possui experiência prática nesta área?",
-  vertical: "Vertical",
-  headquarters: "Onde a empresa está sediada?",
-  pitchDeck: "Envio Pitch Deck (PDF/PPT) (Link compartilhável)",
-  videoDemo: "Envio Vídeo de Demo da solução (até 5 min)",
-
-  // Progresso
-  timeWorking: "Há quanto está se trabalhando no projeto? Quanto desse tempo foi em regime de tempo integral?",
-  cashBurn: "Qual o cash balance (caixa atual) e o burn rate mensal (queima de caixa)?",
-  sellsButFails: "A empresa já vende, mas falha na entrega/operação por carência de tecnologia?",
-  techStack: "Que conjunto de tecnologias você está usando, ou planeja usar?",
-  reduceCosts: "É possível reduzir custos de desenvolvimento ou CAC utilizando a expertise do Extreme Group?",
-  mvp4weeks: "É possível testar uma versão funcional (MVP) em no máximo 4 semanas?",
-
-  // Mercado
-  whyThisIdea: "Por que você escolheu desenvolver essa ideia? Como você sabe que as pessoas precisam do que você está criando?",
-  painPoint: "Qual dor latente esta solução resolve? Existem evidências ou dados que comprovam essa dor?",
-  valueProposition: "Para [Públicos/Clientes] que têm [Problema], nós oferecemos [Solução/Produto].",
-  whyUs: "Por que somos os melhores para resolver isso?",
-  competitors: "Quem são os principais concorrentes e o que vocês entendem sobre o negócio que eles ainda não entenderam?",
-  marketSize: "Qual o TAM, SAM e SOM aproximado?",
-  scalability: "O modelo permite crescimento de receita sem aumento proporcional de custos?",
-  salesChannels: "Possui acesso direto a canais de venda?",
-  regulatory: "Existe alguma barreira legal imediata?",
-
-  // Equity
-  equityBreakdown: "Qual o percentual de equity detido pelos fundadores e outros acionistas?",
-  hasCNPJ: "Algum dos founders já possui CNPJ ou outra empresa constituída?",
-  externalInvestment: "Já receberam algum investimento externo ou estão captando no momento?",
-  thirdPartyDep: "Existe dependência de terceiros não-sócios para a tecnologia core?",
-
-  // Expectativas
-  whyApply: "O que o convenceu a aplicar para o modelo de Venture Builder da Beyond?",
-  expectations: "Em quais áreas você espera receber mais ajuda?",
-};
-
-// Founder field labels
-const FOUNDER_LABELS: Record<string, string> = {
-  name: "Nome completo",
-  phone: "Telefone",
-  email: "Email",
-  gender: "Gênero",
-  birthdate: "Data de nascimento",
-  city: "Cidade que vive",
-  socialMedia: "Redes sociais",
-  education: "Educação",
-  workHistory: "Histórico de trabalho",
-  linkedin: "LinkedIn",
-  achievements: "Quais conquistas o fundador se orgulha de ter alcançado?",
-  projects: "Conte-nos sobre projetos que você já desenvolveu.",
-  title: "Qual é o seu título? (CEO, CTO, Vendas, etc.)",
-  founderEquity: "Quanto de equity você tem? (%)",
-  hours: "Disponibilidade real (horas/semana)",
-  technical: "Você é um founder técnico? (desenvolvedor)",
-  inCollege: "Você está atualmente na faculdade?",
-  founderVideo: "Envio de apresentação em vídeo de até 1 minuto",
-  techPerson: "Quem escreve o código ou faz o trabalho técnico?",
-  howMet: "Como o time de fundadores se conheceu?",
+// Fallback para chaves de founder legadas (papel = PT) que não aparecem em
+// nenhuma seção do submission-field-labels canônico.
+const FOUNDER_LEGACY_LABELS: Record<string, string> = {
   papel: "Papel",
 };
 
@@ -122,6 +63,16 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
   const data = submission.data || {};
   const canEdit = submission.status === "Submissões";
   const queryClient = useQueryClient();
+
+  // Fonte única de labels: submission-field-labels (por origem) + fallback
+  // legado. Nunca criar mapa paralelo no componente.
+  const fieldLabelMap = useMemo(
+    () => ({
+      ...buildLabelMap(submission.type as string),
+      ...FOUNDER_LEGACY_LABELS,
+    }),
+    [submission.type],
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, any>>({});
@@ -337,7 +288,7 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
               )}
               {Object.entries(f).filter(([key]) => key !== "name" && key !== "nome").map(([key, value]) => {
                 if (!isEditing && (value === undefined || value === null || value === "")) return null;
-                const label = FOUNDER_LABELS[key] || key;
+                const label = fieldLabelMap[key] || key;
                 if (isEditing) {
                   return (
                     <EditableRow
@@ -374,7 +325,7 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
               isEditing ? (
                 <EditableRow
                   key={key}
-                  label={FIELD_LABELS[key] || key}
+                  label={fieldLabelMap[key] || key}
                   value={String(currentData[key] ?? "")}
                   onChange={(v) => updateField(key, v)}
                   long={LONG_TEXT_FIELDS.has(key)}
@@ -382,7 +333,7 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
               ) : (
                 <InfoRow
                   key={key}
-                  label={FIELD_LABELS[key] || key}
+                  label={fieldLabelMap[key] || key}
                   value={formatYesNo(String(currentData[key]))}
                 />
               )
@@ -399,7 +350,7 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
             isEditing ? (
               <EditableRow
                 key={key}
-                label={FIELD_LABELS[key] || key}
+                label={fieldLabelMap[key] || key}
                 value={String(currentData[key] ?? "")}
                 onChange={(v) => updateField(key, v)}
                 long={LONG_TEXT_FIELDS.has(key)}
@@ -407,7 +358,7 @@ export function SubmissionDetails({ submission, onSaved }: SubmissionDetailsProp
             ) : (
               <InfoRow
                 key={key}
-                label={FIELD_LABELS[key] || key}
+                label={fieldLabelMap[key] || key}
                 value={formatYesNo(String(currentData[key]))}
               />
             )
